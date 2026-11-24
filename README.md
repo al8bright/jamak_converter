@@ -200,6 +200,15 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_llama.ps1
 
 관리자 권한, PATH 등록, 서비스 등록은 필요 없습니다. 지우려면 폴더를 삭제하면 됩니다.
 
+### 설치 파일 만들기
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_app.ps1
+# → app\src-tauri\target\release\bundle\nsis\jamak_0.1.0_x64-setup.exe (약 80MB)
+```
+
+설치한 앱을 처음 열면 필요한 파일 내려받기 화면이 나옵니다. FFmpeg, CUDA 라이브러리, llama-server, Whisper, 번역 모델을 합쳐 약 12GB이며 `%LOCALAPPDATA%\jamak_converter\`에 저장합니다. 이미 있는 항목은 건너뜁니다.
+
 ### 실행
 
 ```powershell
@@ -270,17 +279,20 @@ jamak_converter/
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
 │  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐)
+│  │  ├─ installer.py       # 처음 실행 때 내려받기 (FFmpeg, CUDA DLL, llama-server, 모델)
 │  │  └─ cli.py
+│  ├─ packaging/          # PyInstaller spec, 진입점
 │  └─ tests/
 ├─ app/                     # React + Vite + TS
-│  ├─ src/                 # api.ts, App.tsx, NewJob.tsx, JobView.tsx, index.css
+│  ├─ src/                 # api.ts, App.tsx, Setup.tsx, NewJob.tsx, JobView.tsx, index.css
 │  └─ src-tauri/            # Tauri 2: src/lib.rs가 백엔드 실행·토큰·종료를 담당
 ├─ docs/
 │  ├─ architecture.html     # 구성도 원본 (stack-diagram)
 │  ├─ architecture.png
 │  └─ architecture-dark.png
 ├─ scripts/
-│  └─ setup_llama.ps1       # llama-server 빌드 내려받기·검증·설치
+│  ├─ setup_llama.ps1       # (개발용) llama-server 내려받기·검증·설치
+│  └─ build_app.ps1         # 설치 파일 빌드 (PyInstaller + Tauri NSIS)
 ├─ README.md
 └─ PLAN.md
 ```
@@ -288,4 +300,6 @@ jamak_converter/
 ## 8. 라이선스 메모
 
 - Whisper 모델, faster-whisper, Silero VAD, Demucs, llama.cpp는 모두 MIT입니다. 각 LLM의 라이선스는 모델마다 다르므로 배포 전에 확인해야 합니다.
-- FFmpeg는 LGPL/GPL 빌드에 따라 함께 배포할 때의 조건이 다릅니다. 배포 단계에서 다시 검토합니다.
+- 설치 파일에는 이 앱과 Python 백엔드만 들어 있습니다. FFmpeg(LGPL 빌드, BtbN), NVIDIA cuBLAS·cuDNN(PyPI 휠), llama.cpp, 모델은 처음 실행할 때 각 배포처에서 사용자가 직접 내려받으므로 이 프로젝트가 재배포하지 않습니다. 받은 폴더에 각자의 라이선스 파일이 함께 저장됩니다.
+- 기본 번역 모델 Gemma 4는 Google의 Gemma 이용 약관을 따릅니다. 다른 GGUF를 쓰려면 `models` 폴더에 넣고 화면에서 고르면 됩니다.
+- 보컬 분리(Demucs + PyTorch, 약 4GB)는 설치 파일에 넣지 않았습니다. 개발 환경에서 `uv sync --extra separation`으로만 쓸 수 있습니다.

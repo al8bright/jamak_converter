@@ -1,8 +1,9 @@
-"""Make the pip-installed NVIDIA DLLs (cuBLAS, cuDNN) loadable on Windows.
+"""Make the NVIDIA DLLs (cuBLAS, cuDNN) loadable on Windows.
 
-The `nvidia-*-cu12` wheels put their DLLs in site-packages/nvidia/<lib>/bin, which is not
-on the DLL search path. CTranslate2 (faster-whisper) loads cuDNN sub-libraries lazily via
-LoadLibrary, so both os.add_dll_directory and PATH are needed.
+Two places are searched: the `nvidia-*-cu12` wheels in site-packages (development) and
+`<home>/bin/cuda`, where the first-run installer puts the same DLLs (packaged app).
+CTranslate2 (faster-whisper) loads cuDNN sub-libraries lazily via LoadLibrary, so both
+os.add_dll_directory and PATH are needed.
 """
 
 from __future__ import annotations
@@ -11,11 +12,16 @@ import os
 import sys
 from pathlib import Path
 
-_done = False
+_added: set[str] = set()
 
 
 def nvidia_dll_dirs() -> list[Path]:
+    from jamak.config import paths
+
     dirs: list[Path] = []
+    local = paths.bin / "cuda"
+    if local.is_dir() and any(local.glob("*.dll")):
+        dirs.append(local)
     for entry in sys.path:
         root = Path(entry) / "nvidia"
         if not root.is_dir():
@@ -27,17 +33,26 @@ def nvidia_dll_dirs() -> list[Path]:
     return dirs
 
 
-def setup() -> None:
-    global _done
-    if _done or sys.platform != "win32":
-        _done = True
-        return
+def find_dll_dir(names: tuple[str, ...]) -> Path | None:
+    """First searched directory set that provides all `names` (they may be split across dirs)."""
     dirs = nvidia_dll_dirs()
-    for d in dirs:
+    found = {n for d in dirs for n in names if (d / n).exists()}
+    return dirs[0] if dirs and found == set(names) else None
+
+
+def setup(force: bool = False) -> None:
+    """Idempotent; `force` re-scans after the installer added DLLs."""
+    if sys.platform != "win32":
+        return
+    if _added and not force:
+        return
+    new = [d for d in nvidia_dll_dirs() if str(d) not in _added]
+    for d in new:
         os.add_dll_directory(str(d))
-    if dirs:
-        os.environ["PATH"] = os.pathsep.join([str(d) for d in dirs] + [os.environ.get("PATH", "")])
-    _done = True
+        _added.add(str(d))
+    if new:
+        os.environ["PATH"] = os.pathsep.join([str(d) for d in new] + [os.environ.get("PATH", "")])
+    _added.add("")  # mark as done even when nothing was found
 
 
 def cuda_device_count() -> int:

@@ -105,6 +105,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .meter::after { content: ""; position: absolute; inset: 0; background: var(--action); transform-origin: left; transform: scaleX(var(--p)); }
 
 .system { border-top: 1px solid var(--rule); padding-top: 0.75rem; display: grid; gap: 0.2rem; font-size: var(--s-1); }
+.system .link { justify-self: start; text-align: left; }
 
 .main { overflow-y: auto; min-width: 0; }
 .page { max-width: 880px; margin: 0 auto; padding: 2.5rem 2.5rem 4rem; display: grid; gap: 1.75rem; align-content: start; }
@@ -154,6 +155,18 @@ textarea { resize: vertical; line-height: 1.45; }
 .field-body { min-width: 0; }
 .actions { display: flex; align-items: center; gap: 1.25rem; padding-top: 1.5rem; }
 .actions p { max-width: 30em; }
+
+/* ------------------------------------------------------------------ setup */
+.setup-head { display: grid; gap: 0.6rem; }
+.setup-head p { max-width: 40em; }
+.setup-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.setup-item { display: grid; grid-template-columns: 1fr 15rem; gap: 1.5rem; align-items: center; padding: 0.9rem 0; border-bottom: 1px solid var(--rule); }
+.setup-name { display: grid; gap: 0.1rem; }
+.setup-name small { font-size: var(--s-1); }
+.setup-state { display: grid; gap: 0.3rem; justify-items: end; text-align: right; font-variant-numeric: tabular-nums; }
+.setup-state .ok { color: var(--ok); }
+.setup-bar { width: 100%; height: 8px; border-radius: 3px; background: var(--desk); overflow: hidden; display: block; }
+.setup-bar > span { display: block; height: 100%; background: var(--action); transform-origin: left; transition: transform 0.4s ease-out; }
 
 /* ------------------------------------------------------------------ progress */
 .progress { display: grid; gap: 1.5rem; padding: 1.75rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }

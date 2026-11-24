@@ -17,18 +17,25 @@ class FfmpegError(RuntimeError):
     pass
 
 
-def ffmpeg_exe() -> str:
-    exe = shutil.which("ffmpeg")
+def _tool(name: str) -> str:
+    """The copy the first-run installer put in <home>/bin/ffmpeg wins over PATH."""
+    from jamak.config import paths
+
+    local = paths.bin / "ffmpeg" / f"{name}.exe"
+    if local.exists():
+        return str(local)
+    exe = shutil.which(name)
     if not exe:
-        raise FfmpegError("ffmpeg not found on PATH")
+        raise FfmpegError(f"{name} not found (run the first-time setup or put FFmpeg on PATH)")
     return exe
+
+
+def ffmpeg_exe() -> str:
+    return _tool("ffmpeg")
 
 
 def ffprobe_exe() -> str:
-    exe = shutil.which("ffprobe")
-    if not exe:
-        raise FfmpegError("ffprobe not found on PATH")
-    return exe
+    return _tool("ffprobe")
 
 
 @dataclass

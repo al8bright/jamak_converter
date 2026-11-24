@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { api, basename, connect, inTauri, type JobSummary, type SystemInfo, tc } from "./api";
 import { NewJob } from "./NewJob";
 import { JobView } from "./JobView";
+import { Setup, setupNeeded, type SetupStatus } from "./Setup";
 
-type View = { kind: "new"; path?: string } | { kind: "job"; key: string };
+type View = { kind: "new"; path?: string } | { kind: "job"; key: string } | { kind: "setup" };
 
 export default function App() {
   const [ready, setReady] = useState<"wait" | "ok" | string>("wait");
   const [sys, setSys] = useState<SystemInfo | null>(null);
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [view, setView] = useState<View>({ kind: "new" });
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
 
   const refresh = useCallback(async () => {
     setJobs(await api.get<JobSummary[]>("/jobs"));
@@ -19,6 +21,9 @@ export default function App() {
     connect()
       .then(async () => {
         setReady("ok");
+        const s = await api.get<SetupStatus>("/setup");
+        setSetup(s);
+        if (setupNeeded(s)) setView({ kind: "setup" });
         setSys(await api.get<SystemInfo>("/system"));
         await refresh();
       })
@@ -75,10 +80,19 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <SystemPanel sys={sys} />
+        <SystemPanel sys={sys} needsSetup={setupNeeded(setup)} onSetup={() => setView({ kind: "setup" })} />
       </aside>
       <main className="main">
-        {view.kind === "new" ? (
+        {view.kind === "setup" ? (
+          <Setup
+            home={sys?.home ?? ""}
+            onDone={async () => {
+              setSetup(await api.get<SetupStatus>("/setup"));
+              setSys(await api.get<SystemInfo>("/system"));
+              setView({ kind: "new" });
+            }}
+          />
+        ) : view.kind === "new" ? (
           <NewJob
             key={view.path ?? "blank"}
             sys={sys}
@@ -123,14 +137,11 @@ function JobBadge({ job }: { job: JobSummary }) {
   );
 }
 
-function SystemPanel({ sys }: { sys: SystemInfo | null }) {
+function SystemPanel({ sys, needsSetup, onSetup }: { sys: SystemInfo | null; needsSetup: boolean; onSetup: () => void }) {
   if (!sys) return null;
   const gpu = sys.gpus[0];
   const model = sys.default_llm ? basename(sys.default_llm) : null;
   const problems: string[] = [];
-  if (!sys.ffmpeg) problems.push("FFmpeg를 찾지 못했습니다");
-  if (!sys.llama_server.exists) problems.push("llama-server가 없습니다 (scripts/setup_llama.ps1)");
-  if (!model) problems.push("번역 모델(GGUF)이 없습니다");
   if (sys.cuda_devices === 0) problems.push("CUDA GPU가 없어 CPU로 처리합니다(느림)");
   return (
     <section className="system" aria-label="시스템 상태">
@@ -144,6 +155,9 @@ function SystemPanel({ sys }: { sys: SystemInfo | null }) {
       {problems.map((p) => (
         <p key={p} className="bad small">{p}</p>
       ))}
+      {needsSetup && (
+        <button className="link" onClick={onSetup}>필요한 파일 내려받기</button>
+      )}
     </section>
   );
 }

@@ -160,6 +160,7 @@ export interface Options {
 
 export interface SystemInfo {
   version: string;
+  home: string;
   ffmpeg: string | null;
   cuda_devices: number;
   gpus: { name: string; memory_total_mb: number; memory_used_mb: number }[];

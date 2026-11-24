@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 import threading
 import time
@@ -142,7 +141,7 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    from jamak.core import cuda
+    from jamak.core import audio, cuda
 
     ok = True
 
@@ -153,8 +152,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     print(f"jamak {__version__}   home: {paths.home}")
     for tool in ("ffmpeg", "ffprobe"):
-        p = shutil.which(tool)
-        row(tool, bool(p), p or "not found on PATH")
+        try:
+            p = audio._tool(tool)
+        except audio.FfmpegError:
+            p = None
+        row(tool, bool(p), p or "not found (run the first-time setup in the app)")
     n = cuda.cuda_device_count()
     row("CUDA (STT)", n > 0, f"{n} device(s)" if n else "no CUDA device for CTranslate2 (STT will use CPU)")
     exe = paths.llama_server_exe

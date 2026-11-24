@@ -118,14 +118,17 @@
 
 ## Phase 5 — 배포 (필요할 때)
 
-- [ ] 백엔드를 PyInstaller로 묶기(onedir). CUDA DLL 포함 여부와 용량 점검
-- [ ] 모델은 처음 실행할 때 내려받기(진행률 표시), 저장 위치는 `%LOCALAPPDATA%`
-- [ ] llama-server(CUDA 빌드)와 CUDA DLL을 앱에 함께 배포. 풀린 1.4GB 중 `llama-server.exe`와 이 파일이 실제로 쓰는 DLL만 남겨 용량 줄이기. 번역 GGUF 모델은 처음 실행할 때 내려받기
-- [ ] FFmpeg 함께 배포 여부와 라이선스 검토
-- [ ] Tauri 번들러로 NSIS 또는 MSI 설치 파일 생성
-- [ ] (선택) GPU가 없을 때 CPU로 대체 실행. 매우 느리다는 경고 표시
+- [x] 백엔드를 PyInstaller로 묶기(onedir, `backend/packaging/jamak-backend.spec`). 264MB. CUDA DLL은 넣지 않음(아래)
+- [x] 모델은 처음 실행할 때 내려받기(진행률 표시), 저장 위치는 `%LOCALAPPDATA%`
+- [x] ~~llama-server와 CUDA DLL을 앱에 함께 배포~~ → **처음 실행할 때 내려받기로 변경**. 함께 넣으면 설치 파일이 2GB를 넘어(cuBLAS+cuDNN 1.25GB, llama-server 0.7GB) NSIS 한도에 걸리고, NVIDIA·FFmpeg 바이너리를 우리가 재배포하게 됨. 배포처(GitHub 릴리스, PyPI, Hugging Face)가 공개한 SHA-256으로 확인하고, 끊기면 이어 받음(`backend/src/jamak/installer.py`)
+- [x] FFmpeg: 재배포하지 않고 처음 실행 때 BtbN의 **LGPL** 공유 빌드를 받음. PATH에 FFmpeg가 이미 있으면 그대로 씀
+- [x] Tauri 번들러로 NSIS 설치 파일 생성(사용자 단위 설치, 관리자 권한 불필요). `scripts/build_app.ps1` 한 번으로 백엔드와 앱을 함께 빌드
+- [ ] (선택) GPU가 없을 때 CPU로 대체 실행. 경고 문구는 표시하지만 GPU 없는 PC에서 실제로 돌려 보지는 않음
 
 **완료 기준**: 개발 도구가 없는 Windows PC에서 설치 후 영상 1편 처리 성공.
+
+> 결과 (2026-11-24): 설치 파일 77.7MB(`jamak_0.1.0_x64-setup.exe`). 이 PC에 조용히 설치(`/S`)·덮어 설치 모두 정상, 설치 위치 `%LOCALAPPDATA%\jamak`. 설치한 앱이 묶인 백엔드를 띄우고 처음 실행 화면에서 빠진 항목(CUDA 라이브러리)을 정확히 표시함. 내려받기 기능은 실제 배포처에서 전부 확인: llama-server 0.7GB, cuBLAS·cuDNN 1.25GB, FFmpeg 78MB, Whisper·GGUF(작은 파일로 대신 확인). 설치된 백엔드 exe가 내려받은 FFmpeg·CUDA DLL만으로 GPU 작업을 끝까지 처리(STT 6.3s, 번역 8.7s, 8줄 모두 번역). 이어 받기·해시 불일치·취소는 단위 테스트로 확인.
+> 남은 확인: **개발 도구와 CUDA가 없는 다른 PC**에서 설치부터 처음 실행 내려받기(약 12GB)까지 사람이 직접 해 봐야 함. 이 PC에는 드라이버·Python·FFmpeg가 이미 있어 완전히 깨끗한 환경은 아님. 앱을 지워도 내려받은 파일(`%LOCALAPPDATA%\jamak_converter`)은 남음.
 
 ## Phase 6 — 샘플 영상 검증 (가장 마지막)
 

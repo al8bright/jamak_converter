@@ -34,6 +34,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pyinstaller>=6.22.3",
     "pyopenjtalk-plus>=0.4.1.post10",
     "pytest>=9.2.0",
     "ruff>=0.17.6",

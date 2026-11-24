@@ -29,6 +29,7 @@ from jamak.config import GlossaryEntry, OutputOptions, PipelineOptions, default_
 from jamak.core.cache import Job, write_json_atomic
 from jamak.core.proc import CREATE_NO_WINDOW
 from jamak.core.types import Line, Lines
+from jamak.installer import SetupManager
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173", "http://127.0.0.1:5173",  # Vite dev server
@@ -73,6 +74,10 @@ class PathBody(BaseModel):
 
 class GlossaryBody(BaseModel):
     entries: list[GlossaryEntry]
+
+
+class InstallBody(BaseModel):
+    ids: list[str] | None = None
 
 
 # ---------------------------------------------------------------------- helpers
@@ -121,6 +126,15 @@ def _gpu_info() -> list[dict[str, Any]]:
     return gpus
 
 
+def _ffmpeg_path() -> str | None:
+    from jamak.core.audio import FfmpegError, ffmpeg_exe
+
+    try:
+        return ffmpeg_exe()
+    except FfmpegError:
+        return None
+
+
 def system_info() -> dict[str, Any]:
     from jamak.core import cuda, separate
     from jamak.core.stt.faster_whisper import MODEL_CHOICES
@@ -141,7 +155,7 @@ def system_info() -> dict[str, Any]:
     return {
         "version": __version__,
         "home": str(paths.home),
-        "ffmpeg": shutil.which("ffmpeg"),
+        "ffmpeg": _ffmpeg_path(),
         "cuda_devices": cuda.cuda_device_count(),
         "gpus": _gpu_info(),
         "llama_server": llama,
@@ -155,9 +169,11 @@ def system_info() -> dict[str, Any]:
 # ---------------------------------------------------------------------- app
 
 
-def create_app(manager: JobManager | None = None, token: str | None = None) -> FastAPI:
+def create_app(manager: JobManager | None = None, token: str | None = None,
+               setup_manager: SetupManager | None = None) -> FastAPI:
     token = token if token is not None else os.environ.get("JAMAK_TOKEN") or None
     mgr = manager or JobManager()
+    setup = setup_manager or SetupManager()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -345,6 +361,24 @@ def create_app(manager: JobManager | None = None, token: str | None = None) -> F
             pass
         finally:
             mgr.unsubscribe(key, q)
+
+    # -------------------------------------------------------------- first-run setup
+    @app.get("/setup")
+    def setup_status():
+        return {"running": setup.running(), "components": setup.status()}
+
+    @app.post("/setup/install", status_code=202)
+    def setup_install(body: InstallBody):
+        try:
+            setup.install(body.ids)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e)) from e
+        return {"running": True}
+
+    @app.post("/setup/cancel")
+    def setup_cancel():
+        setup.cancel()
+        return {"ok": True}
 
     # -------------------------------------------------------------- glossaries
     @app.get("/glossaries")
