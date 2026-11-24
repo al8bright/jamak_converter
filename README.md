@@ -68,13 +68,16 @@ Whisper large-v3와 14B급 LLM을 **동시에 올리면 VRAM이 부족할 수 �
 
 ### Tauri 셸 (`app/src-tauri`)
 - Tauri 2를 사용합니다. Windows에서는 WebView2로 React UI를 띄웁니다.
-- 앱이 시작될 때 Python 백엔드(PyInstaller로 만든 exe)를 **사이드카**로 실행합니다. 빈 포트를 골라 인자로 넘기고, `/health`가 응답할 때까지 기다린 뒤 UI에 포트를 알려 줍니다. 앱을 종료하면 백엔드 프로세스도 함께 종료합니다.
+- 앱이 시작될 때 Python 백엔드를 **사이드카**로 실행합니다(개발 중에는 `uv run jamak serve`, 배포본에서는 PyInstaller exe). `--port 0`으로 띄워 백엔드가 고른 빈 포트(`JAMAK_LISTENING` 줄)를 읽고, 실행마다 새로 만든 토큰과 함께 `backend_info` 명령으로 UI에 넘깁니다.
+- 앱을 닫으면 백엔드를 종료합니다. 앱이 강제 종료되어도 백엔드가 `--parent-pid`로 부모를 지켜보다 스스로 끝나고, llama-server는 Job Object로 묶여 함께 끝납니다(둘 다 확인함).
+- `JAMAK_BACKEND_URL`을 지정하면 백엔드를 띄우지 않고 이미 실행 중인 서버에 붙습니다.
 - 파일 선택은 Tauri dialog 플러그인으로 합니다. 백엔드에는 **파일 경로만** 넘기고 업로드는 하지 않습니다. 백엔드가 같은 PC에서 파일을 직접 읽습니다.
 
 ### 웹 UI (`app/src`)
 - React, Vite, TypeScript로 만듭니다.
-- 화면 구성: 파일 선택 → 옵션(보컬 분리, 모델, 용어집) → 진행률 → 자막 검수와 편집 → 저장.
-- 진행률은 WebSocket으로 받습니다. 단계 이름, 진행 비율, 남은 시간 추정치가 표시됩니다.
+- 화면 구성: 파일 선택(대화 상자 또는 창에 끌어다 놓기) → 옵션(오디오 트랙, 인식·번역 모델, 보컬 분리, 용어집 저장·불러오기, 노래 구간, 출력 형식) → 진행률 → 자막 검수와 편집 → 저장.
+- 진행률은 WebSocket으로 받습니다. 단계별 막대(실제 처리 시간 비중대로 폭을 나눔), 현재 단계, 남은 시간 추정치가 표시됩니다.
+- 검수 화면 위쪽의 어두운 화면에 고른 줄이 실제 자막처럼 표시됩니다. 줄마다 번역과 시작·끝 시간을 고칠 수 있고, 고친 줄은 잠겨 다시 번역해도 바뀌지 않습니다. 두 줄을 넘거나 초당 15자를 넘는 줄에는 경고가 붙습니다.
 - 개발 중에는 Tauri 없이 브라우저만으로도 동작해야 합니다. 이때 파일 선택은 경로를 직접 입력하는 방식으로 대신합니다.
 
 ### Python 백엔드 (`backend/`)
@@ -211,10 +214,13 @@ uv run jamak doctor                                  # ffmpeg, CUDA, llama-serve
 uv run jamak transcribe "D:\video\episode01.mkv"   # CLI
 uv run jamak serve --port 8765                      # API 서버
 
-# 프런트엔드 + Tauri
+# 프런트엔드 + Tauri (백엔드를 알아서 띄움)
 cd app
 pnpm install
 pnpm tauri dev
+
+# 브라우저만으로 UI 개발: 백엔드를 8765 포트로 따로 띄운 뒤
+pnpm dev                                             # http://localhost:5173 (영상 경로는 직접 입력)
 ```
 
 번역 모델은 `%LOCALAPPDATA%\jamak_converter\models\`에 GGUF 파일을 두면 됩니다. 잠정 기본값은 Google 공식 [`gemma-4-12b-it-qat-q4_0.gguf`](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)(7GB, Apache 2.0)입니다. Whisper 모델(약 3GB)은 처음 실행할 때 자동으로 내려받습니다.
@@ -245,7 +251,7 @@ uv run pytest -m gpu -s  # 끝까지 실행하는 테스트 (CUDA, Whisper, llam
 
 테스트용 영상은 저작권 문제가 없도록 Open JTalk(`pyopenjtalk`)로 일본어 대사를 합성해 자동으로 만듭니다(`tests/fixtures_gen.py`). 트랙이 두 개인 MKV(영어 무음 + 일본어 대사 + 배경음)라서 트랙 선택, 발화 감지, 인식, 번역을 한 번에 확인할 수 있습니다.
 
-## 7. 폴더 구조 (예정)
+## 7. 폴더 구조
 
 ```
 jamak_converter/
@@ -257,18 +263,18 @@ jamak_converter/
 │  │  │  ├─ separate.py     # Demucs
 │  │  │  ├─ filters.py      # Whisper 환각 필터
 │  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object)
-│  │  │  ├─ stt/            # base.py, faster_whisper.py, kotoba.py
+│  │  │  ├─ stt/            # base.py, faster_whisper.py (kotoba는 모델 이름으로 선택)
 │  │  │  ├─ segmenter.py
-│  │  │  ├─ translate/      # base.py, openai_compat.py, llama_server.py, prompts/
+│  │  │  ├─ translate/      # openai_compat.py, llama_server.py, prompts.py
 │  │  │  ├─ subtitle.py     # SRT/ASS/VTT 쓰기
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
-│  │  ├─ api/               # FastAPI 라우트, WebSocket, 작업 큐
+│  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐)
 │  │  └─ cli.py
 │  └─ tests/
 ├─ app/                     # React + Vite + TS
-│  ├─ src/
-│  └─ src-tauri/            # Tauri 2, 사이드카 설정
+│  ├─ src/                 # api.ts, App.tsx, NewJob.tsx, JobView.tsx, index.css
+│  └─ src-tauri/            # Tauri 2: src/lib.rs가 백엔드 실행·토큰·종료를 담당
 ├─ docs/
 │  ├─ architecture.html     # 구성도 원본 (stack-diagram)
 │  ├─ architecture.png

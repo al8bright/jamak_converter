@@ -35,14 +35,24 @@ class Cancelled(Exception):
     pass
 
 
-def available() -> bool:
-    try:
-        import demucs  # noqa: F401
-        import torch  # noqa: F401
+_available_lock = threading.Lock()
+_available: bool | None = None
 
-        return True
-    except ImportError:
-        return False
+
+def available() -> bool:
+    """True when the optional `separation` extra is installed. Imported once under a lock:
+    two threads importing torch at the same time can see a half-initialised module."""
+    global _available
+    with _available_lock:
+        if _available is None:
+            try:
+                import demucs  # noqa: F401
+                import torch  # noqa: F401
+
+                _available = True
+            except ImportError:
+                _available = False
+        return _available
 
 
 def separate_vocals(video: Path, track_index: int, out_wav: Path, opts: SeparateOptions,
