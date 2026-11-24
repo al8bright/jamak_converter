@@ -3,8 +3,8 @@
 //!
 //! Backend command, first match wins:
 //!   1. JAMAK_BACKEND_URL set      -> use an already running backend (no spawn)
-//!   2. <resources>/backend/jamak-backend.exe exists (release bundle)
-//!   3. dev: `uv run --project <repo>/backend jamak serve`
+//!   2. release build and <resources>/backend/jamak-backend.exe exists (bundle)
+//!   3. otherwise (always in dev): `uv run --project <repo>/backend jamak serve`
 //! The backend gets `--port 0 --parent-pid <our pid>` and JAMAK_TOKEN=<random>; it prints
 //! `JAMAK_LISTENING <url>` once ready and exits by itself if this process dies.
 
@@ -65,7 +65,9 @@ fn backend_command(app: &tauri::AppHandle) -> Command {
         .resource_dir()
         .ok()
         .map(|d| d.join("backend").join("jamak-backend.exe"))
-        .filter(|p| p.exists());
+        // dev builds always run the backend from source: a stale PyInstaller copy can sit in
+        // target/debug/backend after an installer build and would lack newer endpoints
+        .filter(|p| !cfg!(debug_assertions) && p.exists());
     let mut cmd = match bundled {
         Some(exe) => Command::new(exe),
         None => {
