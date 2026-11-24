@@ -35,7 +35,7 @@ Video ─▶ ① FFmpeg ─▶ ② Demucs ─▶ ③ Silero VAD ─▶ ④ faste
 |---|---|---|---|---|
 | ① | 오디오 추출 | FFmpeg | `audio.wav` | 16kHz 모노 PCM. 여러 오디오 트랙이 있으면 일본어 트랙을 고름 |
 | ② | 보컬 분리 | Demucs (htdemucs) | `vocals.wav` | 배경음악 때문에 인식이 틀리거나 환각이 생기는 것을 줄임. 옵션이며 기본값은 켬 |
-| ③ | 발화 감지 | Silero VAD | `vad.json` | 무음·음악 구간을 잘라내 Whisper 환각을 막음 |
+| ③ | 발화 감지 | Silero VAD (faster-whisper 내장) | — | ④ 안에서 함께 실행. 무음·음악 구간을 잘라내 Whisper 환각을 막음 |
 | ④ | 음성 인식 | faster-whisper `large-v3` (CUDA fp16) | `transcript.json` | 단어 단위 타임스탬프 포함. `kotoba-whisper-v2.0`은 비교 후보 |
 | ⑤ | 자막 단위 분할 | 자체 구현 | `segments.ja.json` | 길이·글자 수·쉼 기준으로 다시 나누고 합침 |
 | ⑥ | 번역 | llama.cpp `llama-server` (로컬 LLM, GGUF) | `segments.ko.json` | 묶음 단위 번역 + 앞뒤 문맥 + 용어집. 출력은 JSON 스키마로 강제 |
@@ -51,8 +51,8 @@ Video ─▶ ① FFmpeg ─▶ ② Demucs ─▶ ③ Silero VAD ─▶ ④ faste
 ├─ meta.json            # 원본 경로, 길이, 단계별 설정 해시와 상태
 ├─ audio.wav
 ├─ vocals.wav
-├─ vad.json
 ├─ transcript.json      # 단어 타임스탬프 포함 원문
+├─ filtered.json        # 환각 필터가 걸러낸 구간 (디버깅용)
 ├─ segments.ja.json     # 자막 단위로 나눈 원문
 └─ segments.ko.json     # 번역 결과 (사용자 수정 내용 포함)
 ```
@@ -87,10 +87,10 @@ STT와 번역 엔진은 인터페이스 뒤에 숨겨 교체할 수 있게 만�
 
 ```python
 class SpeechRecognizer(Protocol):
-    def transcribe(self, audio: Path, vad: list[Span], opts: SttOptions) -> Transcript: ...
+    def transcribe(self, audio: Path, initial_prompt: str | None, progress, cancel) -> Transcript: ...
 
 class Translator(Protocol):
-    def translate(self, batch: list[Line], ctx: TranslationContext) -> list[Line]: ...
+    def translate(self, lines: list[Line], glossary, progress, cancel, only_ids=None) -> None: ...
 ```
 
 ### 번역 서버: llama.cpp `llama-server`
@@ -189,7 +189,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_llama.ps1
 
 관리자 권한, PATH 등록, 서비스 등록은 필요 없습니다. 지우려면 폴더를 삭제하면 됩니다.
 
-### 실행 (예정)
+### 실행
 
 ```powershell
 # 번역 서버 준비 (처음 한 번)
@@ -198,6 +198,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_llama.ps1
 # 백엔드
 cd backend
 uv sync
+uv run jamak doctor                                  # ffmpeg, CUDA, llama-server, 모델 확인
 uv run jamak transcribe "D:\video\episode01.mkv"   # CLI
 uv run jamak serve --port 8765                      # API 서버
 
@@ -206,6 +207,32 @@ cd app
 pnpm install
 pnpm tauri dev
 ```
+
+번역 모델은 `%LOCALAPPDATA%\jamak_converter\models\`에 GGUF 파일을 두면 됩니다. 잠정 기본값은 Google 공식 [`gemma-4-12b-it-qat-q4_0.gguf`](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)(7GB, Apache 2.0)입니다. Whisper 모델(약 3GB)은 처음 실행할 때 자동으로 내려받습니다.
+
+#### CLI 주요 옵션
+
+| 옵션 | 설명 |
+|---|---|
+| `--glossary 파일` | 용어집. `.txt`(한 줄에 `ユウキ=유키`) 또는 `.json`(`[{"ja","ko","note"}]`). 인식 힌트와 번역에 모두 반영 |
+| `--formats srt,ass,vtt` | 출력 형식 (기본 `srt`) |
+| `--ja` / `--dual` | 일본어 자막도 저장 / 일본어+한국어 이중 ASS 저장 |
+| `--separate` | Demucs 보컬 분리 사용 |
+| `--parallel N` | 번역 묶음 N개 동시 처리 |
+| `--llm-model 경로` | 다른 GGUF 사용 |
+| `--llm-url URL` | 외부 OpenAI 호환 서버 사용 (예: Ollama `http://127.0.0.1:11434/v1`) |
+| `--force 단계` | 캐시가 있어도 해당 단계부터 다시 실행 |
+| `--out 폴더` | 출력 폴더 (기본: 영상 옆) |
+
+#### 테스트
+
+```powershell
+cd backend
+uv run pytest            # 단위 테스트 (GPU 불필요)
+uv run pytest -m gpu -s  # 끝까지 실행하는 테스트 (CUDA, Whisper, llama-server 필요)
+```
+
+테스트용 영상은 저작권 문제가 없도록 Open JTalk(`pyopenjtalk`)로 일본어 대사를 합성해 자동으로 만듭니다(`tests/fixtures_gen.py`). 트랙이 두 개인 MKV(영어 무음 + 일본어 대사 + 배경음)라서 트랙 선택, 발화 감지, 인식, 번역을 한 번에 확인할 수 있습니다.
 
 ## 7. 폴더 구조 (예정)
 
@@ -217,7 +244,8 @@ jamak_converter/
 │  │  ├─ core/
 │  │  │  ├─ audio.py        # ffmpeg 추출, 트랙 선택
 │  │  │  ├─ separate.py     # Demucs
-│  │  │  ├─ vad.py          # Silero VAD
+│  │  │  ├─ filters.py      # Whisper 환각 필터
+│  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object)
 │  │  │  ├─ stt/            # base.py, faster_whisper.py, kotoba.py
 │  │  │  ├─ segmenter.py
 │  │  │  ├─ translate/      # base.py, openai_compat.py, llama_server.py, prompts/

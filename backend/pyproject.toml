@@ -1,0 +1,45 @@
+[project]
+name = "jamak"
+version = "0.1.0"
+description = "Local Japanese -> Korean subtitle generator (faster-whisper + llama.cpp)"
+readme = "README.md"
+authors = [
+    { name = "Ethan", email = "al8bright@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.165.0",
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "nvidia-cublas-cu12==12.9.2.10",
+    "nvidia-cudnn-cu12>=9,<10",
+    "pydantic>=2.14.4",
+    "pysubs2>=1.9.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+jamak = "jamak:main"
+
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyopenjtalk-plus>=0.4.1.post10",
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B905"]

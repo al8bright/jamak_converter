@@ -27,36 +27,40 @@
 
 - [x] Rust 설치 (`rustup`, stable-x86_64-pc-windows-msvc, rustc 1.100.0). MSVC는 VS Build Tools 2026이 이미 있음
 - [x] `scripts/setup_llama.ps1`: 고정 빌드의 `llama-server.exe`와 CUDA DLL 내려받기, SHA-256 검증, 설치
-- [ ] 잠정 번역 모델로 쓸 GGUF 1개 내려받기 (16GB VRAM에 들어가는 14B 이하, Q4~Q5)
-- [ ] llama-server 동작 확인: `-ngl 99`로 GPU에 올리고 `/v1/chat/completions`에 `response_format`(JSON 스키마)을 넣었을 때 `[{id, ko}]` 형식이 지켜지는지, VRAM 사용량 확인
-- [ ] `backend/` 생성: `uv init --python 3.12`, faster-whisper, CUDA 휠(`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) 설치
-- [ ] GPU 확인 스크립트: faster-whisper `large-v3`를 `cuda` + `float16`으로 로드해서 짧은 wav 인식
+- [x] 잠정 번역 모델로 쓸 GGUF 1개 내려받기 → Google 공식 `gemma-4-12b-it-qat-q4_0.gguf` (7GB, Apache 2.0, SHA-256 검증)
+- [x] llama-server 동작 확인: `-ngl 99`로 GPU에 올리고 `/v1/chat/completions`에 `response_format`(JSON 스키마)을 넣었을 때 `[{id, ko}]` 형식이 지켜지는지, VRAM 사용량 확인
+- [x] `backend/` 생성: `uv init --python 3.12`, faster-whisper, CUDA 휠(`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) 설치
+- [x] GPU 확인 스크립트: faster-whisper `large-v3`를 `cuda` + `float16`으로 로드해서 짧은 wav 인식
 - [x] git 저장소 초기화(`github.com/al8bright/jamak_converter`, `main`), `.gitignore` 작성 (모델, 샘플, 작업 캐시 제외)
 
 **완료 기준**: GPU 확인 스크립트가 CUDA로 동작하고, llama-server가 JSON 스키마대로 응답함.
+
+> 결과 (2026-11-24): `jamak doctor` 전 항목 OK. llama-server + Gemma 4 12B: JSON 스키마(id 키 고정) 준수, 약 60 tok/s, 로드 후 VRAM 약 12.5GB(ctx 8192). Windows에서는 `nvidia-cublas-cu12` 최신판에 Windows 휠이 없어 `12.9.2.10`으로 고정.
 
 ## Phase 1 — CLI MVP (핵심 파이프라인)
 
 보컬 분리 없이 가장 짧은 경로로 영상에서 한국어 SRT까지 만듭니다.
 
-- [ ] `core/audio.py`: FFmpeg로 16kHz 모노 WAV 추출, `ffprobe`로 오디오 트랙 목록을 보고 일본어 트랙 선택
-- [ ] `core/cache.py`: 작업 폴더, `meta.json`, 단계별 설정 해시, 바뀐 단계만 다시 실행하는 로직
-- [ ] `core/vad.py`: Silero VAD로 발화 구간 추출
-- [ ] `core/stt/faster_whisper.py`: `word_timestamps=True`, `condition_on_previous_text=False`, VAD 구간 적용
-- [ ] `core/segmenter.py`: 단어 타임스탬프를 바탕으로 자막 단위로 다시 나누기
+- [x] `core/audio.py`: FFmpeg로 16kHz 모노 WAV 추출, `ffprobe`로 오디오 트랙 목록을 보고 일본어 트랙 선택
+- [x] `core/cache.py`: 작업 폴더, `meta.json`, 단계별 설정 해시, 바뀐 단계만 다시 실행하는 로직
+- [x] `core/vad.py` 대신 faster-whisper 내장 Silero VAD 사용 (`vad_filter=True`, 별도 단계 없음)
+- [x] `core/stt/faster_whisper.py`: `word_timestamps=True`, `condition_on_previous_text=False`, VAD 구간 적용
+- [x] `core/segmenter.py`: 단어 타임스탬프를 바탕으로 자막 단위로 다시 나누기
   - 초기 규칙(설정으로 바꿀 수 있게): 자막 하나는 1~7초, 일본어 한 줄은 최대 20자 정도, 문장부호(。？！、)와 0.4초 이상 쉼에서 자르기, 짧은 조각은 앞뒤와 합치기
-- [ ] `core/translate/llama_server.py`: `llama-server` 프로세스 관리
+- [x] `core/translate/llama_server.py`: `llama-server` 프로세스 관리
   - 빈 포트를 골라 실행(`-m <gguf> -ngl 99 -c <ctx> --host 127.0.0.1 --port <p>`), `/health`가 준비될 때까지 대기
   - 번역이 끝나거나 오류·취소가 생기면 종료. 백엔드가 죽어도 남지 않도록 Windows Job Object로 묶음
-- [ ] `core/translate/openai_compat.py`: `/v1/chat/completions` 번역 클라이언트 (외부 서버 모드에서도 그대로 사용)
+- [x] `core/translate/openai_compat.py`: `/v1/chat/completions` 번역 클라이언트 (외부 서버 모드에서도 그대로 사용)
   - 25줄 정도씩 묶고, 앞에서 번역한 5줄을 문맥으로 함께 전달
   - `response_format`에 JSON 스키마를 지정해 `[{id, ko}]` 형태로 받음. id나 줄 수가 안 맞으면 묶음 크기를 줄여 다시 시도
   - 시스템 프롬프트: 구어체 자막, 존댓말·반말 유지, 한 줄 길이 제한
-- [ ] `core/subtitle.py`: pysubs2로 SRT 쓰기
-- [ ] `core/pipeline.py` + `cli.py`: `jamak transcribe <video> [--model] [--llm] [--out]`, 단계별 진행률 로그 출력
-- [ ] 단위 테스트: 분할 규칙, 캐시 무효화, 번역 응답 검증과 재시도
+- [x] `core/subtitle.py`: pysubs2로 SRT 쓰기
+- [x] `core/pipeline.py` + `cli.py`: `jamak transcribe <video> [--model] [--llm] [--out]`, 단계별 진행률 로그 출력
+- [x] 단위 테스트: 분할 규칙, 캐시 무효화, 번역 응답 검증과 재시도
 
 **완료 기준**: 짧은 일본어 클립(1~2분)을 처리해 `.ko.srt`가 나오고, 플레이어에서 열었을 때 싱크가 대략 맞음. 단계별 소요 시간이 로그에 남음. 번역 품질은 이 단계에서 판단하지 않음.
+
+> 결과 (2026-11-24): 합성 대사 영상(31초, `tests/fixtures_gen.py`)으로 끝까지 통과(`pytest -m gpu`). CER 6.1%(용어집 없이, 이름 1개 오인식) → 용어집 사용 시 이름도 정확. 소요: 오디오 0.7s, STT 7.0s(모델 로드 포함), 번역 8.9s(llama-server 시작 포함). 실제 영상 클립 확인은 사용자 클립을 받으면 추가.
 
 ## Phase 2 — 기능 확장 (애니·드라마 대응)
 
