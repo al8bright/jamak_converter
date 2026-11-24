@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { useApp } from "./ctx";
+import { Note, Page } from "./ui";
 
 export interface SetupComponent {
   id: string;
@@ -26,7 +28,9 @@ function gb(bytes: number): string {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)}GB` : `${Math.max(1, Math.round(bytes / 1e6))}MB`;
 }
 
-export function Setup({ home, onDone }: { home: string; onDone: () => void }) {
+export function Setup({ onDone }: { onDone: () => void }) {
+  const { sys } = useApp();
+  const home = sys?.home ?? "jamak 폴더";
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +52,7 @@ export function Setup({ home, onDone }: { home: string; onDone: () => void }) {
     return () => clearInterval(t);
   }, [status?.running, poll]);
 
-  if (!status) return <section className="page"><p className="quiet">확인하는 중…</p></section>;
+  if (!status) return <Page eyebrow="SETUP" title="설치 확인"><p className="muted">확인하는 중…</p></Page>;
 
   const missing = status.components.filter((c) => c.status !== "present" && c.status !== "done");
   const remaining = missing.reduce((a, c) => a + (c.total_bytes || c.approx_bytes) - c.done_bytes, 0);
@@ -65,17 +69,14 @@ export function Setup({ home, onDone }: { home: string; onDone: () => void }) {
   }
 
   return (
-    <section className="page">
-      <header className="page-head setup-head">
-        <h1>{allDone ? "준비가 끝났습니다" : "처음 한 번, 필요한 파일을 내려받습니다"}</h1>
-        <p className="quiet">
-          {allDone
-            ? "이제 영상을 넣어 자막을 만들 수 있습니다."
-            : `음성 인식과 번역은 모두 이 PC에서 처리하므로 엔진과 모델 파일이 필요합니다. 남은 용량은 약 ${gb(remaining)}이며 ${home}에 저장합니다. 중간에 끊겨도 받은 부분부터 이어서 받습니다.`}
-        </p>
-      </header>
+    <Page eyebrow="SETUP · 처음 한 번" title={allDone ? "준비가 끝났습니다" : "필요한 파일을 내려받습니다"}>
+      <p className="muted" style={{ margin: 0, maxWidth: 720 }}>
+        {allDone
+          ? "이제 영상을 넣어 자막을 만들 수 있습니다."
+          : `음성 인식과 번역은 모두 이 PC에서 처리하므로 엔진과 모델 파일이 필요합니다. 남은 용량은 약 ${gb(remaining)}이며 ${home}에 저장합니다. 중간에 끊겨도 받은 부분부터 이어서 받습니다.`}
+      </p>
 
-      {error && <p className="notice bad" role="alert">{error}</p>}
+      {error && <Note tone="err">{error}</Note>}
 
       <ul className="setup-list">
         {status.components.map((c) => {
@@ -83,27 +84,27 @@ export function Setup({ home, onDone }: { home: string; onDone: () => void }) {
           const ready = c.status === "present" || c.status === "done";
           const p = ready ? 1 : total ? c.done_bytes / total : 0;
           return (
-            <li key={c.id} className={`setup-item ${c.status}`}>
+            <li key={c.id} className={c.status}>
               <div className="setup-name">
-                <span>{c.name}</span>
-                <small className="quiet">{c.note}</small>
+                <b style={{ fontWeight: 500 }}>{c.name}</b>
+                <small className="muted">{c.note}</small>
               </div>
               <div className="setup-state">
                 {ready ? (
-                  <span className="ok">준비됨</span>
+                  <span className="badge ok">준비됨</span>
                 ) : c.status === "running" ? (
                   <>
-                    <span className="setup-bar"><span style={{ transform: `scaleX(${p})` }} /></span>
-                    <span className="small quiet">{gb(c.done_bytes)} / {gb(total)}</span>
+                    <span className="bar"><span style={{ width: `${p * 100}%` }} /></span>
+                    <span className="small muted">{gb(c.done_bytes)} / {gb(total)}</span>
                   </>
                 ) : c.status === "queued" ? (
-                  <span className="quiet">대기 중</span>
+                  <span className="muted">대기 중</span>
                 ) : c.status === "error" ? (
-                  <span className="bad small" title={c.error ?? ""}>실패: {c.error}</span>
+                  <span className="err-fg small" title={c.error ?? ""}>실패: {c.error}</span>
                 ) : c.status === "cancelled" ? (
-                  <span className="quiet">멈춤</span>
+                  <span className="muted">멈춤</span>
                 ) : (
-                  <span className="quiet">{gb(total)}</span>
+                  <span className="muted">{gb(total)}</span>
                 )}
               </div>
             </li>
@@ -111,20 +112,20 @@ export function Setup({ home, onDone }: { home: string; onDone: () => void }) {
         })}
       </ul>
 
-      <div className="actions">
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
         {allDone ? (
-          <button className="btn primary big" onClick={onDone}>자막 만들기로 가기</button>
+          <button className="btn primary lg" onClick={onDone}>자막 만들기로 가기</button>
         ) : status.running ? (
-          <button className="btn big" onClick={() => api.post("/setup/cancel").then(poll)}>멈추기</button>
+          <button className="btn lg" onClick={() => api.post("/setup/cancel").then(poll)}>멈추기</button>
         ) : (
-          <button className="btn primary big" onClick={start}>
+          <button className="btn primary lg" onClick={start}>
             {missing.some((c) => c.status === "error" || c.status === "cancelled") ? "이어서 내려받기" : "내려받기 시작"}
           </button>
         )}
         {!allDone && !status.running && (
-          <p className="quiet small">FFmpeg, CUDA 라이브러리, llama.cpp는 각 배포처의 공식 파일을 받아 SHA-256으로 확인합니다.</p>
+          <p className="muted small">FFmpeg, CUDA 라이브러리, llama.cpp는 각 배포처의 공식 파일을 받아 SHA-256으로 확인합니다.</p>
         )}
       </div>
-    </section>
+    </Page>
   );
 }

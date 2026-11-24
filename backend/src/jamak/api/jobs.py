@@ -16,7 +16,8 @@ from typing import Any
 
 from jamak.config import PipelineOptions, paths
 from jamak.core.cache import Job, write_json_atomic
-from jamak.core.pipeline import Cancelled, Pipeline, run_translation, save_options
+from jamak.core.pipeline import Cancelled, Pipeline, engine_summary, run_translation, save_options
+from jamak.core.translate.factory import resolve_options
 from jamak.core.types import Lines
 
 
@@ -33,6 +34,8 @@ class JobState:
     outputs: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
+    engine: dict[str, Any] | None = None  # translation profile summary (kind, model, cloud)
+    usage: dict[str, Any] | None = None  # running token / cost counters of the translate stage
     queued_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -61,6 +64,7 @@ class JobManager:
         self.loop = loop
 
     def _publish(self, key: str, event: dict) -> None:
+        event.setdefault("t", round(time.time(), 2))  # for the progress log
         st = self.states.get(key)
         if st is not None:
             st.events.append(event)
@@ -113,16 +117,21 @@ class JobManager:
         self.cancels[key] = threading.Event()
         return st
 
-    def submit_run(self, video: Path, opts: PipelineOptions, force_from: str | None = None) -> JobState:
+    def submit_run(self, video: Path, opts: PipelineOptions, force_from: str | None = None,
+                   profile_id: int | None = None) -> JobState:
         job = Job(video)
         if self.busy(job.key):
             raise RuntimeError("this video is already queued or running")
+        opts = resolve_options(opts, profile_id)
         save_options(job, opts)
         st = self._new_state(job.key, str(job.video), "run")
+        st.engine = engine_summary(opts.translate)
         cancel = self.cancels[job.key]
 
         def on_event(e: dict) -> None:
             st.stage, st.progress, st.message = e["stage"], e["overall"], e.get("message", "")
+            if e.get("usage"):
+                st.usage = e["usage"]
             self._publish(job.key, {"type": "progress", **e})
 
         def run() -> None:
@@ -136,12 +145,16 @@ class JobManager:
         self._publish(job.key, {"job": job.key, "type": "status", "status": "queued", **st.public()})
         return st
 
-    def submit_retranslate(self, key: str, ids: list[int]) -> JobState:
+    def submit_retranslate(self, key: str, ids: list[int], profile_id: int | None = None) -> JobState:
+        """Retranslate some lines, optionally with another profile (options.json is not changed)."""
         if self.busy(key):
             raise RuntimeError("job is busy")
         job = Job.open_key(key)
         opts = load_options(job)
+        if profile_id is not None:
+            opts = resolve_options(opts, profile_id)
         st = self._new_state(key, str(job.video), "retranslate")
+        st.engine = engine_summary(opts.translate)
         cancel = self.cancels[key]
 
         def run() -> None:
@@ -154,10 +167,12 @@ class JobManager:
                 if ln.id in wanted:
                     ln.locked = False  # an explicit retranslate request overrides the edit lock
 
-            def progress(f: float, m: str) -> None:
+            def progress(f: float, m: str, usage: dict | None = None) -> None:
                 st.stage, st.progress, st.message = "translate", f, m
+                if usage:
+                    st.usage = usage
                 self._publish(key, {"type": "progress", "job": key, "stage": "translate", "status": "progress",
-                                    "progress": f, "overall": f, "message": m})
+                                    "progress": f, "overall": f, "message": m, **({"usage": usage} if usage else {})})
 
             st.stats = {"translate": run_translation(lines, opts, job, progress=progress, cancel=cancel,
                                                      only_ids=wanted)}
@@ -197,7 +212,16 @@ def list_job_dirs() -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         stages = meta.get("stages", {})
+        engine = (stages.get("translate") or {}).get("engine")
+        if engine is None:
+            try:
+                t = json.loads((d / "options.json").read_text(encoding="utf-8")).get("translate", {})
+                engine = {"kind": t.get("mode"), "profile_name": t.get("profile_name"),
+                          "cloud": t.get("mode") in ("anthropic", "gemini")}
+            except (OSError, json.JSONDecodeError):
+                engine = None
         out.append({
+            "engine": engine,
             "key": d.name,
             "video_path": meta.get("video_path"),
             "video_name": meta.get("video_name"),

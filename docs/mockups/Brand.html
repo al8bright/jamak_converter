@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jamak · 브랜드</title>
+<link rel="icon" href="../brand/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div id="dc-root"></div>
+<script type="text/x-dc-template">
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700;900&amp;family=Noto+Sans+JP:wght@500;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#050409}
+a{color:inherit}a:hover{color:inherit}
+:focus-visible{outline:2px solid #FFFFFF;outline-offset:2px}
+@keyframes jm-ja{0%,44%{opacity:1}47%,94%{opacity:0}97%,100%{opacity:1}}
+@keyframes jm-ko{0%,44%{opacity:0}47%,94%{opacity:1}97%,100%{opacity:0}}
+@keyframes jm-gh{0%,43.5%{opacity:0}44%{opacity:1;clip-path:inset(12% 0 58% 0);transform:translateX(-6%)}45.5%{opacity:1;clip-path:inset(56% 0 14% 0);transform:translateX(5%)}47%{opacity:1;clip-path:inset(32% 0 38% 0);transform:translateX(-3%)}48%,93.5%{opacity:0}94%{opacity:1;clip-path:inset(60% 0 10% 0);transform:translateX(6%)}95.5%{opacity:1;clip-path:inset(8% 0 62% 0);transform:translateX(-5%)}97%{opacity:1;clip-path:inset(40% 0 30% 0);transform:translateX(3%)}98%,100%{opacity:0}}
+@keyframes jm-bar{0%{transform:scaleX(0)}14%,42%{transform:scaleX(1)}47%{transform:scaleX(0)}61%,92%{transform:scaleX(1)}97%,100%{transform:scaleX(0)}}
+@keyframes jm-flick{0%,43%,48%,93%,98%,100%{opacity:1}44%{opacity:.35}45%{opacity:1}46%{opacity:.6}94%{opacity:.4}95%{opacity:1}96%{opacity:.7}}
+@keyframes jm-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){[data-anim]{animation:none !important}}
+</style>
+</helmet>
+<div style="width: 1280px; height: 960px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 40px; background-color: {{t.bg}}; background-image: linear-gradient({{t.grid}} 1px, transparent 1px), linear-gradient(90deg, {{t.grid}} 1px, transparent 1px); background-size: 28px 28px; color: {{t.text}}; font-family: 'Noto Sans KR', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+
+  <section aria-label="로고" style="display: flex; align-items: center; gap: 56px">
+    <span data-anim role="img" aria-label="jamak 움직이는 로고: 字가 자로 바뀌는 괄호 마크" style="position: relative; flex: 0 0 auto; display: inline-block; width: 200px; height: 200px; animation: jm-flick 6s infinite">
+      <svg aria-hidden="true" viewBox="0 0 32 32" width="200" height="200" style="position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 0 6px {{b.p}}) drop-shadow(0 0 18px {{b.pLine}})"><path d="M3 11V3h8M29 21v8h-8" fill="none" stroke="{{b.p}}" stroke-width="2" stroke-linecap="square"></path></svg>
+      <span data-anim aria-hidden="true" lang="ja" style="position: absolute; inset: 0 0 26px; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; font-size: 104px; line-height: 1; color: {{b.text}}; text-shadow: 0 0 18px {{b.pLine}}; opacity: 0; animation: jm-ja 6s infinite">字</span>
+      <span data-anim aria-hidden="true" style="position: absolute; inset: 0 0 26px; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 104px; line-height: 1; color: {{b.text}}; text-shadow: 0 0 18px {{b.pLine}}; opacity: 1; animation: jm-ko 6s infinite">자</span>
+      <span data-anim aria-hidden="true" style="position: absolute; top: 0; right: 0; bottom: 26px; left: -6px; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 104px; line-height: 1; color: {{b.p}}; opacity: 0; animation: jm-gh 6s infinite">자</span>
+      <span data-anim aria-hidden="true" lang="ja" style="position: absolute; top: 0; right: -6px; bottom: 26px; left: 0; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; font-size: 104px; line-height: 1; color: {{b.s}}; opacity: 0; animation: jm-gh 6s infinite">字</span>
+      <span data-anim aria-hidden="true" style="position: absolute; left: 58px; right: 58px; bottom: 30px; height: 8px; background: {{b.s}}; box-shadow: 0 0 12px {{b.s}}; transform-origin: left; animation: jm-bar 6s infinite"></span>
+    </span>
+    <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+      <span style="font-family: 'Chakra Petch', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.28em; color: {{b.s}}">JAMAK CONVERTER</span>
+      <span style="font-family: 'Chakra Petch', sans-serif; font-size: 112px; font-weight: 700; line-height: 0.95; letter-spacing: 0.08em; color: {{b.text}}; text-shadow: 0 0 2px {{b.text}}, 0 0 22px {{b.p}}, 0 0 48px {{b.pLine}}">JAMAK</span>
+      <span style="display: flex; align-items: baseline; gap: 14px; font-size: 28px; font-weight: 700; color: {{b.text}}"><span lang="ja" style="font-family: 'Noto Sans JP', sans-serif">字幕</span><span aria-hidden="true" style="color: {{b.p}}">→</span><span>자막</span></span>
+      <span style="color: {{b.muted}}">일본어 음성을 이 PC에서 한국어 자막으로 바꿉니다</span>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 20px">
+
+    <section aria-labelledby="anat-h" style="padding: 20px; background: {{t.card}}; border: 1px solid {{t.line}}; border-radius: 6px; display: flex; flex-direction: column; gap: 14px">
+      <h2 id="anat-h" style="margin: 0; font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 600; color: {{t.s}}"><span style="letter-spacing: 0.14em">ANATOMY</span> · 구성</h2>
+      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 13px">
+        <li style="display: flex; gap: 12px"><span aria-hidden="true" lang="ja" style="flex: 0 0 40px; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; color: {{b.p}}; text-shadow: 0 0 8px {{b.pLine}}">「 」</span><span><strong>일본어 인용 괄호.</strong> <span style="color: {{t.muted}}">대사를 감싸는 틀입니다.</span></span></li>
+        <li style="display: flex; gap: 12px"><span aria-hidden="true" style="flex: 0 0 40px; font-weight: 900"><span lang="ja" style="font-family: 'Noto Sans JP', sans-serif">字</span>→자</span><span><strong>글자 전환.</strong> <span style="color: {{t.muted}}">6초마다 글리치와 함께 일본어 字가 한국어 자로 바뀝니다.</span></span></li>
+        <li style="display: flex; gap: 12px"><span aria-hidden="true" style="flex: 0 0 40px; display: flex; align-items: center"><span style="display: block; width: 26px; height: 4px; background: {{b.s}}; box-shadow: 0 0 6px {{b.s}}"></span></span><span><strong>자막 막대.</strong> <span style="color: {{t.muted}}">글자가 바뀔 때마다 자막 한 줄처럼 다시 그려집니다.</span></span></li>
+      </ul>
+      <p style="margin: 0; font-size: 12px; color: {{t.muted}}">로고와 파비콘 색은 팔레트를 바꿔도 그대로입니다. 움직임 줄이기를 켠 환경에서는 '자' 정지 화면만 보입니다.</p>
+    </section>
+
+    <section aria-labelledby="size-h" style="padding: 20px; background: {{t.card}}; border: 1px solid {{t.line}}; border-radius: 6px; display: flex; flex-direction: column; gap: 14px">
+      <h2 id="size-h" style="margin: 0; font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 600; color: {{t.s}}"><span style="letter-spacing: 0.14em">SIZES</span> · 크기</h2>
+      <div style="flex: 1 1 auto; display: flex; align-items: flex-end; justify-content: space-around; gap: 16px">
+        <sc-for list="{{ sizes }}" as="z" hint-placeholder-count="3">
+          <span style="display: flex; flex-direction: column; align-items: center; gap: 10px">
+            <span data-anim aria-hidden="true" style="position: relative; display: inline-block; width: {{z.box}}; height: {{z.box}}; animation: jm-flick 6s infinite">
+              <svg viewBox="0 0 32 32" width="{{z.n}}" height="{{z.n}}" style="position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 0 3px {{b.p}})"><path d="M3 11V3h8M29 21v8h-8" fill="none" stroke="{{b.p}}" stroke-width="2.4" stroke-linecap="square"></path></svg>
+              <span data-anim lang="ja" style="position: absolute; top: 0; right: 0; left: 0; bottom: {{z.lift}}; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; font-size: {{z.font}}; line-height: 1; color: {{b.text}}; opacity: 0; animation: jm-ja 6s infinite">字</span>
+              <span data-anim style="position: absolute; top: 0; right: 0; left: 0; bottom: {{z.lift}}; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: {{z.font}}; line-height: 1; color: {{b.text}}; opacity: 1; animation: jm-ko 6s infinite">자</span>
+              <span data-anim style="position: absolute; top: 0; right: 0; left: -2px; bottom: {{z.lift}}; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: {{z.font}}; line-height: 1; color: {{b.p}}; opacity: 0; animation: jm-gh 6s infinite">자</span>
+              <span data-anim style="position: absolute; left: {{z.barX}}; right: {{z.barX}}; bottom: {{z.barY}}; height: {{z.barH}}; background: {{b.s}}; box-shadow: 0 0 6px {{b.s}}; transform-origin: left; animation: jm-bar 6s infinite"></span>
+            </span>
+            <span style="font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; color: {{t.muted}}">{{z.label}}</span>
+          </span>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-labelledby="fav-h" style="padding: 20px; background: {{t.card}}; border: 1px solid {{t.line}}; border-radius: 6px; display: flex; flex-direction: column; gap: 14px">
+      <h2 id="fav-h" style="margin: 0; font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 600; color: {{t.s}}"><span style="letter-spacing: 0.14em">FAVICON</span> · 앱 아이콘</h2>
+      <div style="display: flex; align-items: center; gap: 20px">
+        <svg width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="앱 아이콘 96px" style="flex: 0 0 auto; filter: drop-shadow(0 0 14px {{b.pLine}})"><rect width="64" height="64" rx="14" fill="{{b.bg}}"></rect><rect x="0.75" y="0.75" width="62.5" height="62.5" rx="13.25" fill="none" stroke="{{b.lineHi}}" stroke-width="1.5"></rect><path d="M12 27V12h15M52 37v15H37" fill="none" stroke="{{b.p}}" stroke-width="7" stroke-linecap="square"></path><rect x="19" y="27" width="26" height="5.5" rx="1" fill="{{b.text}}"></rect><rect x="24" y="36" width="16" height="5.5" rx="1" fill="{{b.s}}"></rect></svg>
+        <div style="display: flex; align-items: flex-end; gap: 16px">
+          <sc-for list="{{ favs }}" as="f" hint-placeholder-count="3">
+            <span style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+              <svg width="{{f.n}}" height="{{f.n}}" viewBox="0 0 64 64" role="img" aria-label="{{f.label}}"><rect width="64" height="64" rx="14" fill="{{b.bg}}"></rect><path d="M12 27V12h15M52 37v15H37" fill="none" stroke="{{b.p}}" stroke-width="7" stroke-linecap="square"></path><rect x="19" y="27" width="26" height="5.5" rx="1" fill="{{b.text}}"></rect><rect x="24" y="36" width="16" height="5.5" rx="1" fill="{{b.s}}"></rect></svg>
+              <span style="font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; color: {{t.muted}}">{{f.n}}px</span>
+            </span>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="2">
+          <div aria-label="{{tb.label}}" role="img" style="display: flex; align-items: flex-end; gap: 2px; padding: 6px 8px 0; border-radius: 6px 6px 0 0; background: {{tb.strip}}">
+            <span style="display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-radius: 6px 6px 0 0; background: {{tb.tab}}; color: {{tb.fg}}; font-size: 12px">
+              <svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true" style="flex: 0 0 auto"><rect width="64" height="64" rx="14" fill="{{b.bg}}"></rect><path d="M12 27V12h15M52 37v15H37" fill="none" stroke="{{b.p}}" stroke-width="7" stroke-linecap="square"></path><rect x="19" y="27" width="26" height="5.5" rx="1" fill="{{b.text}}"></rect><rect x="24" y="36" width="16" height="5.5" rx="1" fill="{{b.s}}"></rect></svg>
+              <span style="white-space: nowrap">jamak · 검수·편집</span>
+            </span>
+            <span style="padding: 7px 12px; font-size: 12px; color: {{tb.dim}}; white-space: nowrap">새 탭</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </div>
+
+  <section aria-labelledby="pal-h" style="display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+      <h2 id="pal-h" style="margin: 0; font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 600; color: {{t.s}}"><span style="letter-spacing: 0.14em">PALETTES</span> · 네온 색상</h2>
+      <span style="font-size: 12px; color: {{t.muted}}">주소 끝에 ?palette=acid 처럼 붙이면 바뀝니다</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{ palettes }}" as="c" hint-placeholder-count="4">
+        <article style="box-sizing: border-box; padding: 16px; border-radius: 6px; background: {{c.bg}}; border: 1px solid {{c.border}}; box-shadow: {{c.shadow}}; display: flex; flex-direction: column; gap: 12px; color: {{c.text}}">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+            <span style="display: flex; flex-direction: column; line-height: 1.25">
+              <span style="font-weight: 700; font-size: 15px">{{c.name}}</span>
+              <span style="font-family: 'Chakra Petch', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; color: {{c.muted}}">{{c.code}}</span>
+            </span>
+            <sc-if value="{{ c.active }}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 8px; border-radius: 3px; background: {{c.p}}; color: {{c.pInk}}; font-size: 11px; font-weight: 700">적용 중</span></sc-if>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+            <sc-for list="{{ c.chips }}" as="w" hint-placeholder-count="4">
+              <span style="display: flex; flex-direction: column; gap: 4px">
+                <span aria-hidden="true" style="display: block; height: 44px; border-radius: 3px; background: {{w.hex}}; border: 1px solid {{c.line}}; box-shadow: {{w.glow}}"></span>
+                <span style="font-size: 10px; color: {{c.muted}}">{{w.role}}</span>
+                <span style="font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 10px; color: {{c.text}}">{{w.hex}}</span>
+              </span>
+            </sc-for>
+          </div>
+          <div aria-hidden="true" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid {{c.line}}">
+            <span style="display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 3px; background: {{c.p}}; color: {{c.pInk}}; font-size: 12px; font-weight: 700; box-shadow: {{c.pGlow}}">처리 시작</span>
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{c.sLine}}; background: {{c.sSoft}}; color: {{c.s}}; font-size: 11px; font-weight: 500">클라우드</span>
+            <span style="flex: 1 1 60px; height: 4px; background: {{c.line}}"><span style="display: block; width: 64%; height: 4px; background: {{c.p}}; box-shadow: 0 0 8px {{c.p}}"></span></span>
+          </div>
+          <div aria-hidden="true" style="display: flex; flex-wrap: wrap; gap: 6px">
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{c.okLine}}; background: {{c.okSoft}}; color: {{c.ok}}; font-size: 11px; font-weight: 500">완료 {{c.ok}}</span>
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{c.warnLine}}; background: {{c.warnSoft}}; color: {{c.warn}}; font-size: 11px; font-weight: 500">주의 {{c.warn}}</span>
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{c.errLine}}; background: {{c.errSoft}}; color: {{c.err}}; font-size: 11px; font-weight: 500">오류 {{c.err}}</span>
+          </div>
+        </article>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</script>
+<script type="text/x-dc-logic" data-props='{"palette":{"editor":"enum","options":["seoul","acid","ice","blade"],"default":"seoul"},"$preview":{"width":1280,"height":960}}'>
+class Component extends DCLogic {
+  palettes() {
+    return {
+      seoul: { name: '서울 나이트', code: 'SEOUL NIGHT', bg: '#07050F', side: '#0B0817', panel: '#0E0A1C', card: '#141026', field: '#1A1530', line: '#2A2246', lineHi: '#3D3363', text: '#EEEAFF', muted: '#A49CC8', p: '#FF2E97', s: '#00E5FF', pInk: '#14000A', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF773D' },
+      acid: { name: '애시드', code: 'ACID', bg: '#040705', side: '#070C08', panel: '#0A100B', card: '#0F1711', field: '#142017', line: '#1F3023', lineHi: '#2E4734', text: '#E8F6E6', muted: '#93AC97', p: '#C6FF1A', s: '#B26BFF', pInk: '#0D1400', ok: '#2AF9D1', warn: '#FDB34C', err: '#FF5468' },
+      ice: { name: '아이스 그리드', code: 'ICE GRID', bg: '#02060C', side: '#040A13', panel: '#06101C', card: '#0A1626', field: '#0F1D31', line: '#18304B', lineHi: '#244667', text: '#E2F3FF', muted: '#8EA9C4', p: '#2DF0FF', s: '#FF4FD8', pInk: '#001418', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF674C' },
+      blade: { name: '블레이드', code: 'BLADE', bg: '#09080A', side: '#0D0B0D', panel: '#110E10', card: '#181416', field: '#201A1C', line: '#332A2B', lineHi: '#4A3C3C', text: '#F6ECE6', muted: '#B3A39C', p: '#FF7A1A', s: '#19F0D0', pInk: '#1A0A00', ok: '#9AFC63', warn: '#FFDD44', err: '#FF4989' }
+    };
+  }
+  rgba(h, x) {
+    const n = parseInt(h.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + x + ')';
+  }
+  derive(b) {
+    const a = this.rgba;
+    return Object.assign({}, b, {
+      okSoft: a(b.ok, 0.1), okLine: a(b.ok, 0.35), warnSoft: a(b.warn, 0.1), warnLine: a(b.warn, 0.4),
+      errSoft: a(b.err, 0.1), errLine: a(b.err, 0.45),
+      pSoft: a(b.p, 0.12), pLine: a(b.p, 0.5), pHalo: a(b.p, 0.07), grid: a(b.p, 0.045),
+      pGlow: '0 0 0 1px ' + a(b.p, 0.6) + ', 0 0 18px ' + a(b.p, 0.45),
+      pText: '0 0 12px ' + a(b.p, 0.55),
+      sSoft: a(b.s, 0.12), sLine: a(b.s, 0.45),
+      iconFx: 'drop-shadow(0 0 4px ' + a(b.p, 0.8) + ')'
+    });
+  }
+  renderVals() {
+    const self = this;
+    const all = this.palettes();
+    const key = all[this.props.palette] ? this.props.palette : 'seoul';
+    const t = this.derive(all[key]);
+    const palettes = Object.keys(all).map(function (k) {
+      const c = self.derive(all[k]);
+      const on = k === key;
+      return Object.assign({}, c, {
+        active: on,
+        border: on ? c.p : c.line,
+        shadow: on ? c.pGlow : 'none',
+        chips: [
+          { role: '바탕', hex: c.bg, glow: 'none' },
+          { role: '카드', hex: c.card, glow: 'none' },
+          { role: '주 네온', hex: c.p, glow: '0 0 12px ' + self.rgba(c.p, 0.6) },
+          { role: '보조 네온', hex: c.s, glow: '0 0 12px ' + self.rgba(c.s, 0.6) }
+        ]
+      });
+    });
+    return {
+      t: t,
+      b: this.derive(all.seoul),
+      palettes: palettes,
+      sizes: [
+        { n: 64, box: '64px', font: '34px', lift: '8px', barX: '19px', barY: '10px', barH: '3px', label: '64px' },
+        { n: 40, box: '40px', font: '21px', lift: '5px', barX: '12px', barY: '6px', barH: '2px', label: '40px' },
+        { n: 30, box: '30px', font: '16px', lift: '4px', barX: '9px', barY: '5px', barH: '2px', label: '30px 사이드바' }
+      ],
+      favs: [
+        { n: 48, label: '파비콘 48px' },
+        { n: 32, label: '파비콘 32px' },
+        { n: 16, label: '파비콘 16px' }
+      ],
+      tabs: [
+        { label: '어두운 브라우저 탭에 놓인 16px 파비콘', strip: '#1F2023', tab: '#35363A', fg: '#E8EAED', dim: '#9AA0A6' },
+        { label: '밝은 브라우저 탭에 놓인 16px 파비콘', strip: '#DEE1E6', tab: '#FFFFFF', fg: '#202124', dim: '#5F6368' }
+      ]
+    };
+  }
+}
+</script>
+<script src="./dc-lite.js"></script>
+</body>
+</html>

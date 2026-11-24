@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 0 | 환경 준비 | 개발 도구, git 저장소, 잠정 번역 모델 | GPU 추론과 llama-server 응답 확인 |
 | 1 | CLI MVP | `jamak transcribe <video>` → `.ko.srt` | 짧은 클립을 끝까지 처리 |
-| 2 | 기능 확장 | 보컬 분리, 용어집, 이중 자막, 환각 필터, 번역 병렬화 | 각 기능이 켜고 끄기에 따라 동작 |
+| 2 | 기능 확장 | 보컬 분리, 용어집, 이중 자막, 환각 필터, 번역 병렬화, **번역 엔진 선택(로컬 / Claude / Gemini)과 설정 DB** | 각 기능이 켜고 끄기에 따라 동작 |
 | 3 | API 서버 | FastAPI + 작업 큐 + WebSocket | CLI와 같은 결과를 HTTP로 얻음 |
 | 4 | 웹 UI + Tauri | 파일 선택 → 진행률 → 검수·편집 → 저장 | 앱 안에서 처음부터 끝까지 완료 |
 | 5 | 배포 (필요할 때) | 설치 파일 | 개발 도구가 없는 PC에서 설치하고 실행 |
@@ -76,6 +76,28 @@
 - [x] 번역 병렬화: llama-server `-np 2~4` 슬롯으로 여러 묶음을 동시에 처리. 문맥은 "앞 묶음의 번역 결과" 대신 "앞 묶음의 일본어 원문"을 넘겨 묶음끼리 서로 기다리지 않게 함. 순차 / 병렬을 옵션으로 둠
 - [x] (선택) GBNF 문법 제한 → 불필요: llama-server가 JSON 스키마를 내부에서 문법으로 바꿔 강제하고, 키를 묶음의 id로 고정해 줄 수·순서가 어긋날 수 없음
 
+### 번역 엔진 선택 + 설정 저장 (TODO.md에서 옮김)
+
+번역 단계(⑥)에서 로컬 LLM과 클라우드 API(Claude, Gemini) 중 하나를 고릅니다. 기본값은 로컬이고, 클라우드는 사용자가 키를 넣고 직접 골랐을 때만 씁니다. 클라우드를 골라도 외부로 나가는 것은 ⑥ 단계의 일본어 대사 텍스트뿐입니다.
+
+| 항목 | 결정 |
+|---|---|
+| 저장소 | SQLite 1개 파일 `%LOCALAPPDATA%/jamak_converter/jamak.db`. 설정만 저장하고 작업 캐시는 파일로 둠 |
+| API 키 보호 | 평문 저장 안 함. Windows DPAPI(`CryptProtectData`, 현재 사용자 범위)를 `ctypes`로 호출 |
+| 선택 단위 | **번역 프로필** = 엔진 종류 + 모델 + 키·주소·옵션. 여러 개 저장하고 하나를 기본으로, 작업마다 바꿀 수 있음 |
+| 클라우드 클라이언트 | 공식 SDK: Claude는 `anthropic`, Gemini는 `google-genai` |
+| 기본값 | 기본 프로필은 "로컬 · Gemma 4 12B"(내장 llama-server). 클라우드 모델의 기본값과 효용은 Phase 6에서 확정 |
+
+- [x] `core/store.py`: 표준 `sqlite3`, WAL·외래 키, `PRAGMA user_version` 마이그레이션. 테이블 `api_keys`, `translation_profiles`, `app_settings`. 처음 실행 때 로컬 프로필을 만들어 기본으로 지정
+- [x] `core/secrets.py`: `protect` / `unprotect`(DPAPI), 화면에는 `last4`만. 키 원문은 로그·예외·`meta.json`·캐시 해시·API 응답에 넣지 않음. 환경 변수(`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) 대체 지원
+- [x] `core/translate/base.py`: 엔진 공통 묶음 번역(응답 검증, 재시도, 묶음 쪼개기, 병렬, 토큰·비용 집계, 거절 줄 표시)
+- [x] `core/translate/anthropic_api.py`: 구조화 출력(`output_config.format`)으로 `[{id, ko}]`, 시스템 프롬프트 + 용어집에 프롬프트 캐싱, `effort` 옵션, `stop_reason == "refusal"` 처리. Opus·Sonnet 5.5는 서버 측 거절 대체 경로(`fallbacks: "default"`, 베타 `server-side-fallback-2026-07-01`)를 켬
+- [x] `core/translate/gemini_api.py`: JSON 스키마 응답, 차단·거절 응답 처리, 모델 목록은 API에서 조회
+- [x] `core/translate/factory.py`: 프로필 → 엔진, 작업 프로필 → 기본 프로필 → `TranslateOptions` 순서로 결정. 클라우드면 llama-server를 띄우지 않음. 거절된 줄은 설정에 따라 로컬로 다시 번역(`local_fallback` 표시)하거나 표시만 함
+- [x] 캐시 해시: ⑥ 단계에 `종류 + 모델 + 프롬프트 버전 + 번역 옵션`. API 키와 키 id는 넣지 않음
+- [x] CLI: `transcribe --profile`, `keys add|list|remove`(getpass), `profiles add|list|set-default|remove|test`
+- [x] 단위 테스트: DPAPI 왕복, 마이그레이션·초기 프로필, 키 삭제 시 연결 해제, 프로필 결정 순서, 캐시 해시에 키 없음, 설정 API가 키를 돌려주지 않음, 가짜 클라이언트로 Claude·Gemini 응답·거절·인증 오류·로컬 대체 확인
+
 **완료 기준**: 각 기능을 옵션으로 켜고 끌 수 있고 테스트 클립에서 동작함. 이중 자막 ASS가 플레이어에서 열림. 환각 필터와 병렬 번역의 줄 맞춤은 단위 테스트로 확인.
 
 > 결과 (2026-11-24): 보컬 분리는 선택 설치(`uv sync --extra separation`, PyTorch 2.14 + CUDA 12.6). 60초 단위로 스트리밍하고 1초 겹쳐 이어 붙여 2시간 영상도 메모리에 다 올리지 않음(작은 청크로 이음매 경로 GPU 테스트 통과). 노래 구간은 사용자가 지정한 시간 범위(`--song 0:00-1:30`)로 처리. STT 모델은 `large-v3` / `large-v3-turbo` / `kotoba-whisper-v2.0` 이름으로 선택. 병렬 번역(`-np 2`) 실서버 동작 확인. 효과 측정과 기본값은 Phase 6.
@@ -90,6 +112,10 @@
 - [x] `/system`: CUDA 사용 여부, VRAM, `llama-server` 실행 파일 확인, `models/`의 GGUF 목록
 - [x] 설정: 번역 서버 모드 선택(내장 llama-server / 외부 OpenAI 호환 서버 주소) → `PipelineOptions.translate.mode`로 작업마다 지정
 - [x] API 테스트 (STT와 LLM은 가짜 엔진으로 대체)
+
+- [x] (번역 엔진 선택) `/settings/api-keys`(목록에는 `id, provider, label, last4`만), `/settings/translation-profiles`(CRUD, `/{id}/test` 연결 테스트), `/settings/default-profile`, `/settings/models`, `/settings/ui`
+- [x] `POST /jobs`, `/jobs/{id}/retranslate`에 `profile_id`. 고른 줄만 다른 엔진으로 다시 번역 가능
+- [x] `/system/checks`(점검 카드: 프로필별 키·GGUF 상태 포함), `/system/usage`(실시간 GPU·CPU·RAM). 이벤트에 시각(`t`)을 붙여 진행 로그에 씀
 
 **완료 기준**: HTTP만으로 작업을 만들고, 진행률을 받고, 내보내기까지 할 수 있으며 결과가 CLI와 같음.
 
@@ -111,6 +137,11 @@
   - 빈 포트를 골라 넘기고 `/health`가 응답할 때까지 대기한 뒤 UI에 포트 전달
   - 앱을 종료하면 사이드카도 종료. 비정상 종료 시 남은 프로세스 정리
 - [x] 영상을 끌어다 놓아 선택하는 기능
+- [x] 화면 구성안([docs/mockups](docs/mockups), [DESIGN.md](DESIGN.md))대로 다시 만들기: 접히는 사이드바와 움직이는 로고, 하단 시스템 모니터, 네온 팔레트 4종, 앱 아이콘
+- [x] 설정 › 번역 엔진: API 키 추가(가림 입력, 저장 후 `••••abcd`만)·삭제, 프로필 추가·수정(로컬 내장 / 외부 서버 / Claude / Gemini), 연결 테스트, 기본 프로필 지정
+- [x] 작업 옵션에 번역 프로필 선택(기본값 미리 선택, 준비 안 된 프로필은 비활성). 클라우드 프로필을 처음 쓸 때 전송 안내를 한 번 확인받고, 옵션 화면에는 계속 표시
+- [x] 진행 화면: 클라우드면 토큰 사용량·예상 비용, 로컬이면 llama-server 상태
+- [x] 검수 화면: 고른 줄을 다른 프로필로 다시 번역, 거절·번역 빠짐 필터
 
 **완료 기준**: `pnpm tauri dev`로 띄운 앱에서 영상 선택 → 처리 → 수정 → 저장까지 마우스로만 끝낼 수 있음.
 
@@ -140,7 +171,7 @@
   - 처리 시간 측정용으로 전체 길이 영상(24분 1편, 2시간 1편)도 준비
 - [ ] STT 비교: `large-v3`, `large-v3-turbo`, `kotoba-whisper-v2.0`의 CER과 처리 속도
 - [ ] 보컬 분리 효과: 배경음악이 큰 구간에서 Demucs 켜기 / 끄기에 따른 CER 차이
-- [ ] 번역 비교: GGUF 후보 2~3개를 직접 읽어 보고 오역, 말투, 이름 표기, 처리 속도를 점검
+- [ ] 번역 비교: GGUF 후보 2~3개와 클라우드 모델(Claude Opus·Sonnet·Haiku 5.5, Gemini)을 직접 읽어 보고 오역, 말투, 이름 표기, 처리 속도, 한 화당 비용, 거절 빈도를 점검. 클라우드 기본 모델과 `effort` 확정
 - [ ] 병렬 번역: 순차와 병렬의 품질 차이와 속도
 - [ ] 분할 규칙(길이, 글자 수, 쉼)과 환각 필터 임계값 조정
 - [ ] 전체 처리 시간 측정(24분, 2시간) → 실측값을 README에 추가
@@ -172,3 +203,6 @@
 | 품질 검증이 마지막이라 늦게 문제를 발견할 수 있음 | 분할 규칙이나 구조를 뒤늦게 고쳐야 함 | 모델, 규칙, 임계값을 처음부터 설정값으로 빼 두고, 단계별 캐시로 다시 돌리는 비용을 낮춤 |
 | PyInstaller에 CUDA까지 묶으면 용량이 큼 | 배포 부담 | 배포는 Phase 5로 미루고, 모델은 처음 실행할 때 내려받기 |
 | 사이드카 프로세스(Python 백엔드, llama-server)가 남는 문제 | 포트 충돌, GPU 점유 | Windows Job Object로 부모와 함께 종료되게 묶고, 시작할 때 남은 프로세스 정리 |
+| API 키 유출 | 요금 피해 | DPAPI로 암호화 저장, 화면에는 끝 4자리만, 키를 로그·`meta.json`·캐시 해시·API 응답에 넣지 않음(테스트로 확인). 서버는 루프백 + 토큰. 같은 Windows 사용자로 도는 프로그램은 복호화할 수 있다는 한계는 README에 적음 |
+| 클라우드 거절·요금 한도 | 일부 줄 번역 빠짐, 작업 지연 | 거절된 줄만 표시하고 로컬 모델로 다시 번역(기본), 429·5xx는 SDK 재시도, 인증 오류는 바로 멈춤. 검수 화면의 "번역 빠짐·거절" 필터로 확인 |
+| 외부 전송에 대한 사용자 인지 | 모르고 대사를 외부로 보냄 | 기본은 로컬. 클라우드 프로필을 처음 쓸 때 안내 확인, 옵션·설정 화면에 전송 범위(일본어 대사 텍스트만) 상시 표시 |

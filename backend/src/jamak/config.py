@@ -146,11 +146,24 @@ class SegmentOptions(BaseModel):
 
 
 class TranslateOptions(BaseModel):
-    mode: Literal["managed", "external"] = "managed"
+    """Filled from a translation profile (core/store.py) when the job starts.
+
+    API keys are never stored here: `api_key_id` points into the settings database and the
+    key is decrypted only when the engine is created. `api_key` exists for programmatic use
+    and is excluded from every dump (options.json, API responses).
+    """
+
+    mode: Literal["managed", "external", "anthropic", "gemini"] = "managed"
+    profile_id: int | None = None
+    profile_name: str | None = None
     model_path: str | None = None  # managed: GGUF path (None = default_llm_path())
     base_url: str | None = None  # external: OpenAI-compatible base URL, e.g. http://127.0.0.1:11434/v1
     model_name: str = "local"  # external: model name sent in the request
-    api_key: str | None = None
+    api_model: str | None = None  # anthropic / gemini: model ID
+    api_key_id: int | None = None
+    api_key: str | None = Field(default=None, exclude=True)
+    effort: Literal["low", "medium", "high"] | None = None  # anthropic only; None = model default
+    refusal: Literal["local", "mark"] = "local"  # cloud refusal: retranslate those lines locally, or only flag
     batch_size: int = 25
     context_lines: int = 5
     temperature: float = 0.2

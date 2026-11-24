@@ -16,7 +16,7 @@ import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +28,8 @@ from jamak.api.jobs import JobManager, list_job_dirs, load_options, purge_job
 from jamak.config import GlossaryEntry, OutputOptions, PipelineOptions, default_llm_path, paths
 from jamak.core.cache import Job, write_json_atomic
 from jamak.core.proc import CREATE_NO_WINDOW
+from jamak.core.store import Profile, ProfileInput, StoreError, store
+from jamak.core.translate.base import EngineError
 from jamak.core.types import Line, Lines
 from jamak.installer import SetupManager
 
@@ -45,6 +47,7 @@ class CreateJob(BaseModel):
     video_path: str
     options: PipelineOptions | None = None
     force_from: str | None = None
+    profile_id: int | None = None  # None: the default profile
 
 
 class SegmentEdit(BaseModel):
@@ -62,6 +65,7 @@ class PatchSegments(BaseModel):
 
 class Retranslate(BaseModel):
     ids: list[int] = Field(min_length=1)
+    profile_id: int | None = None  # None: the profile the job was made with
 
 
 class ExportRequest(BaseModel):
@@ -78,6 +82,22 @@ class GlossaryBody(BaseModel):
 
 class InstallBody(BaseModel):
     ids: list[str] | None = None
+
+
+class KeyBody(BaseModel):
+    provider: Literal["anthropic", "gemini", "openai_compat"]
+    label: str = Field("", max_length=60)
+    secret: str = Field(min_length=1, max_length=500, repr=False)
+
+
+class DefaultProfileBody(BaseModel):
+    profile_id: int
+
+
+class UiSettings(BaseModel):
+    palette: Literal["seoul", "acid", "ice", "blade"] = "seoul"
+    sidebar: Literal["open", "hidden"] = "open"
+    cloud_notice_seen: bool = False
 
 
 # ---------------------------------------------------------------------- helpers
@@ -152,7 +172,10 @@ def system_info() -> dict[str, Any]:
             if not p.name.startswith("mmproj"):
                 models.append({"name": p.name, "path": str(p), "size_gb": round(p.stat().st_size / 1e9, 2)})
     default = default_llm_path()
+    from jamak.api.checks import cpu_name, short_cpu
+
     return {
+        "cpu_name": short_cpu(cpu_name()),
         "version": __version__,
         "home": str(paths.home),
         "ffmpeg": _ffmpeg_path(),
@@ -164,6 +187,28 @@ def system_info() -> dict[str, Any]:
         "stt_models": MODEL_CHOICES,
         "separation_available": separate.available(),
     }
+
+
+def profile_public(p: Profile) -> dict[str, Any]:
+    from jamak.api.checks import profile_status
+
+    d = p.model_dump()
+    d["cloud"] = p.cloud
+    d["key"] = store.key_info(p.api_key_id)
+    d["status"] = profile_status(p)
+    d["is_default"] = store.default_profile_id() == p.id
+    return d
+
+
+def _store_call(fn, *a, **kw):
+    try:
+        return fn(*a, **kw)
+    except StoreError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        if type(e).__name__ == "SecretError":
+            raise HTTPException(400, str(e)) from e
+        raise
 
 
 # ---------------------------------------------------------------------- app
@@ -204,6 +249,21 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     @app.get("/system")
     def system():
         return system_info()
+
+    @app.get("/system/usage")
+    def system_usage():
+        from jamak.api.checks import usage
+
+        return usage()
+
+    @app.get("/system/checks")
+    def system_checks():
+        from datetime import datetime
+
+        from jamak.api.checks import run_checks
+
+        return {"checked_at": datetime.now().isoformat(timespec="seconds"),
+                "checks": run_checks(system_info(), setup.status())}
 
     @app.get("/options/default")
     def default_options():
@@ -254,7 +314,9 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
             raise HTTPException(400, "bad force_from")
         opts = body.options or PipelineOptions()
         try:
-            st = mgr.submit_run(p, opts, body.force_from)
+            st = mgr.submit_run(p, opts, body.force_from, profile_id=body.profile_id)
+        except EngineError as e:
+            raise HTTPException(400, str(e)) from e
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from e
         return st.public()
@@ -327,7 +389,9 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     def retranslate(key: str, body: Retranslate):
         _job_or_404(key)
         try:
-            st = mgr.submit_retranslate(key, body.ids)
+            st = mgr.submit_retranslate(key, body.ids, profile_id=body.profile_id)
+        except EngineError as e:
+            raise HTTPException(400, str(e)) from e
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from e
         return st.public()
@@ -379,6 +443,90 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     def setup_cancel():
         setup.cancel()
         return {"ok": True}
+
+    # -------------------------------------------------------------- settings (SQLite)
+    @app.get("/settings/api-keys")
+    def list_keys():
+        return store.list_keys()  # id, provider, label, last4, created_at: never the key itself
+
+    @app.post("/settings/api-keys", status_code=201)
+    def add_key(body: KeyBody):
+        return _store_call(store.add_key, body.provider, body.label, body.secret)
+
+    @app.delete("/settings/api-keys/{key_id}")
+    def remove_key(key_id: int):
+        if not store.remove_key(key_id):
+            raise HTTPException(404, "API 키가 없습니다")
+        return {"ok": True}
+
+    @app.get("/settings/translation-profiles")
+    def list_profiles():
+        return [profile_public(p) for p in store.list_profiles()]
+
+    @app.post("/settings/translation-profiles", status_code=201)
+    def add_profile(body: ProfileInput):
+        return profile_public(_store_call(store.add_profile, body))
+
+    @app.put("/settings/translation-profiles/{profile_id}")
+    def update_profile(profile_id: int, body: ProfileInput):
+        return profile_public(_store_call(store.update_profile, profile_id, body))
+
+    @app.delete("/settings/translation-profiles/{profile_id}")
+    def remove_profile(profile_id: int):
+        if len(store.list_profiles()) <= 1:
+            raise HTTPException(400, "프로필이 하나는 있어야 합니다")
+        if not store.remove_profile(profile_id):
+            raise HTTPException(404, "프로필이 없습니다")
+        return {"ok": True}
+
+    @app.post("/settings/translation-profiles/{profile_id}/test")
+    def test_profile(profile_id: int):
+        from jamak.core.translate.factory import test_profile as run_test
+
+        p = store.get_profile(profile_id)
+        if p is None:
+            raise HTTPException(404, "프로필이 없습니다")
+        if p.kind == "local_managed" and any(mgr.busy(k) for k in list(mgr.states)):
+            raise HTTPException(409, "작업이 GPU를 쓰는 중입니다. 작업이 끝난 뒤 테스트하세요")
+        res = run_test(p)
+        return {**res, "profile": profile_public(store.get_profile(profile_id))}
+
+    @app.put("/settings/default-profile")
+    def set_default_profile(body: DefaultProfileBody):
+        _store_call(store.set_default, body.profile_id)
+        return {"ok": True}
+
+    @app.get("/settings/models")
+    def list_models(kind: Literal["anthropic", "gemini", "local_managed"], key_id: int | None = None):
+        if kind == "anthropic":
+            from jamak.core.translate.anthropic_api import MODELS
+
+            return {"models": MODELS}
+        if kind == "local_managed":
+            return {"models": [m["path"] for m in system_info()["llm_models"]]}
+        from jamak.core.translate.gemini_api import list_models as gemini_models
+
+        try:
+            secret = (store.key_secret(key_id) if key_id is not None
+                      else os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        except StoreError as e:
+            raise HTTPException(400, str(e)) from e
+        if not secret:
+            raise HTTPException(400, "Gemini 키를 먼저 고르세요")
+        try:
+            return {"models": gemini_models(secret)}
+        except Exception as e:
+            raise HTTPException(502, f"모델 목록을 가져오지 못했습니다 ({type(e).__name__})") from e
+
+    @app.get("/settings/ui")
+    def get_ui():
+        raw = store.get_setting("ui")
+        return UiSettings.model_validate_json(raw) if raw else UiSettings()
+
+    @app.put("/settings/ui")
+    def put_ui(body: UiSettings):
+        store.set_setting("ui", body.model_dump_json())
+        return body
 
     # -------------------------------------------------------------- glossaries
     @app.get("/glossaries")

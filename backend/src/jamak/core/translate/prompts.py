@@ -6,6 +6,9 @@ import json
 
 from jamak.config import GlossaryEntry
 
+# bump when the prompt or the response format changes: it is part of the translate cache key
+PROMPT_VERSION = 1
+
 SYSTEM_PROMPT = """\
 You are a professional Japanese-to-Korean subtitle translator for anime and TV drama.
 
@@ -52,3 +55,12 @@ def response_schema(ids: list[int]) -> dict:
         "required": [str(i) for i in ids],
         "additionalProperties": False,
     }
+
+
+def system_with_glossary(glossary: list[GlossaryEntry]) -> str:
+    """System prompt with the glossary appended: a stable prefix that cloud APIs can cache."""
+    if not glossary:
+        return SYSTEM_PROMPT
+    entries = [{"ja": g.ja, "ko": g.ko, **({"note": g.note} if g.note else {})} for g in glossary]
+    return (SYSTEM_PROMPT + "\nGlossary (use these Korean spellings exactly):\n"
+            + json.dumps(entries, ensure_ascii=False, indent=1) + "\n")

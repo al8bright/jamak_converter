@@ -94,6 +94,20 @@ export const STAGE_NAMES: Record<Stage, string> = {
 
 export type JobStatus = "queued" | "running" | "done" | "error" | "cancelled";
 
+export interface EngineSummary {
+  kind: "managed" | "external" | "anthropic" | "gemini" | null;
+  profile_id?: number | null;
+  profile_name?: string | null;
+  model?: string;
+  cloud: boolean;
+}
+
+export interface Usage {
+  requests: number; retries: number; splits: number; failed_lines: number; refused_lines: number;
+  prompt_tokens: number; completion_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
+  cost_usd: number | null; batches_total: number; batches_done: number;
+}
+
 export interface LiveState {
   key: string;
   video_path: string;
@@ -105,7 +119,10 @@ export interface LiveState {
   error: string | null;
   outputs: string[];
   timings: Record<string, number>;
-  stats: Record<string, Record<string, number>>;
+  stats: Record<string, Record<string, unknown>>;
+  engine: EngineSummary | null;
+  usage: Usage | null;
+  queued_at: number;
   started_at: number | null;
   finished_at: number | null;
   events?: JobEvent[];
@@ -117,7 +134,7 @@ export type JobEvent =
   | {
       type: "progress"; job: string; stage: Stage;
       status: "start" | "progress" | "done" | "skipped";
-      progress: number; overall: number; message: string;
+      progress: number; overall: number; message: string; usage?: Usage; t?: number; elapsed?: number;
     };
 
 export interface JobSummary {
@@ -128,6 +145,8 @@ export interface JobSummary {
   updated?: string;
   translated?: boolean;
   last_export?: string[];
+  engine?: EngineSummary | null;
+  stages?: Record<string, { elapsed?: number; finished?: string }>;
   live: LiveState | null;
 }
 
@@ -151,7 +170,8 @@ export interface Options {
   segment: { max_chars: number; max_duration: number };
   songs: { mode: "translate" | "skip"; ranges: [number, number][] };
   translate: {
-    mode: "managed" | "external"; model_path: string | null; base_url: string | null; model_name: string;
+    mode: "managed" | "external" | "anthropic" | "gemini"; profile_id: number | null; profile_name: string | null;
+    model_path: string | null; base_url: string | null; model_name: string; api_model: string | null;
     batch_size: number; context_lines: number; temperature: number; parallel: number;
   };
   output: { formats: string[]; include_ja: boolean; dual_ass: boolean; out_dir: string | null; ko_max_line_chars: number };
@@ -160,6 +180,7 @@ export interface Options {
 
 export interface SystemInfo {
   version: string;
+  cpu_name: string;
   home: string;
   ffmpeg: string | null;
   cuda_devices: number;
@@ -178,6 +199,54 @@ export interface Probe {
   picked: number | null;
   tracks: { index: number; codec: string; language: string | null; title: string | null; channels: number; default: boolean }[];
 }
+
+export type ProfileKind = "local_managed" | "local_external" | "anthropic" | "gemini";
+
+export interface ProfileOptions {
+  batch_size: number; context_lines: number; parallel: number | null; gpu_layers: number;
+  effort: "low" | "medium" | "high" | null; refusal: "local" | "mark"; temperature: number | null;
+}
+
+export interface ApiKey { id: number; provider: "anthropic" | "gemini" | "openai_compat"; label: string; last4: string; created_at: string }
+
+export interface Profile {
+  id: number; name: string; kind: ProfileKind; model: string | null; base_url: string | null; api_key_id: number | null;
+  options: ProfileOptions; last_test: { ok: boolean; message: string; at: string } | null;
+  cloud: boolean; is_default: boolean; key: ApiKey | null;
+  status: { ok: boolean; ready: boolean; text: string; at?: string };
+}
+
+export interface UiSettings { palette: "seoul" | "acid" | "ice" | "blade"; sidebar: "open" | "hidden"; cloud_notice_seen: boolean }
+
+export interface SystemUsage {
+  gpu: { name: string; util: number; vram_used_gb: number; vram_total_gb: number } | null;
+  cpu: number; ram_used_gb: number; ram_total_gb: number; cpu_name: string;
+}
+
+export interface Check {
+  state: "ok" | "warn" | "err" | "off"; area: string; title: string; detail: string;
+  fix: string | null; bar: number | null; action: "setup" | "engine" | null;
+}
+
+export const KIND_LABEL: Record<ProfileKind, string> = {
+  local_managed: "로컬 내장", local_external: "외부 서버", anthropic: "Claude", gemini: "Gemini",
+};
+
+export function kindBadge(kind: ProfileKind | EngineSummary["kind"]): { text: string; cloud: boolean } {
+  if (kind === "anthropic" || kind === "gemini") return { text: "클라우드", cloud: true };
+  if (kind === "local_external" || kind === "external") return { text: "외부 서버", cloud: false };
+  return { text: "로컬", cloud: false };
+}
+
+export function profileDetail(p: Profile, llmName?: string | null): string {
+  const o = p.options;
+  if (p.kind === "local_managed") return `llama-server · ${p.model ? basename(p.model) : llmName ?? "기본 GGUF"}`;
+  if (p.kind === "local_external") return `${p.base_url ?? ""} · ${p.model || "local"}`;
+  const key = p.key ? `키 ••••${p.key.last4}` : "등록된 키 없음";
+  return `${p.model ?? "모델 미정"} · ${key} · 동시 요청 ${o.parallel ?? 4}`;
+}
+
+export const PROVIDER_NAME: Record<string, string> = { anthropic: "Anthropic", gemini: "Google", openai_compat: "외부 서버" };
 
 // ------------------------------------------------------------------ formatting
 
@@ -205,4 +274,37 @@ export function parseTc(text: string): number | null {
 
 export function basename(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
+}
+
+export function clock(ts: number | string | null | undefined, withSec = false): string {
+  if (ts === null || ts === undefined) return "";
+  const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", ...(withSec ? { second: "2-digit" } : {}), hour12: false });
+}
+
+export function when(ts: string | number | null | undefined): string {
+  if (ts === null || ts === undefined || ts === "") return "";
+  const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  const hm = d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (diff === 0) return `오늘 ${hm}`;
+  if (diff === 1) return `어제 ${hm}`;
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+export function duration(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s}초`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}분 ${s % 60 ? `${s % 60}초` : ""}`.trim();
+  return `${Math.floor(m / 60)}시간 ${m % 60}분`;
+}
+
+export function mmss(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }

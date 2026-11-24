@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jamak · 설정 · 시스템 상태</title>
+<link rel="icon" href="../brand/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div id="dc-root"></div>
+<script type="text/x-dc-template">
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700;900&amp;family=Noto+Sans+JP:wght@500;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#050409}
+a{color:inherit}a:hover{color:inherit}
+:focus-visible{outline:2px solid #FFFFFF;outline-offset:2px}
+@keyframes jm-ja{0%,44%{opacity:1}47%,94%{opacity:0}97%,100%{opacity:1}}
+@keyframes jm-ko{0%,44%{opacity:0}47%,94%{opacity:1}97%,100%{opacity:0}}
+@keyframes jm-gh{0%,43.5%{opacity:0}44%{opacity:1;clip-path:inset(12% 0 58% 0);transform:translateX(-6%)}45.5%{opacity:1;clip-path:inset(56% 0 14% 0);transform:translateX(5%)}47%{opacity:1;clip-path:inset(32% 0 38% 0);transform:translateX(-3%)}48%,93.5%{opacity:0}94%{opacity:1;clip-path:inset(60% 0 10% 0);transform:translateX(6%)}95.5%{opacity:1;clip-path:inset(8% 0 62% 0);transform:translateX(-5%)}97%{opacity:1;clip-path:inset(40% 0 30% 0);transform:translateX(3%)}98%,100%{opacity:0}}
+@keyframes jm-bar{0%{transform:scaleX(0)}14%,42%{transform:scaleX(1)}47%{transform:scaleX(0)}61%,92%{transform:scaleX(1)}97%,100%{transform:scaleX(0)}}
+@keyframes jm-flick{0%,43%,48%,93%,98%,100%{opacity:1}44%{opacity:.35}45%{opacity:1}46%{opacity:.6}94%{opacity:.4}95%{opacity:1}96%{opacity:.7}}
+@keyframes jm-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){[data-anim]{animation:none !important}}
+</style>
+</helmet>
+<div style="height: 100vh; overflow: auto; display: flex; flex-wrap: wrap; background-color: {{t.bg}}; background-image: linear-gradient({{t.grid}} 1px, transparent 1px), linear-gradient(90deg, {{t.grid}} 1px, transparent 1px); background-size: 28px 28px; color: {{t.text}}; font-family: 'Noto Sans KR', system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+
+  <nav aria-label="주 메뉴" style="flex: 0 0 {{side.w}}; box-sizing: border-box; overflow-y: auto; background: {{t.side}}; border-right: 1px solid {{t.line}}; padding: {{side.pad}}; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-direction: {{side.logoDir}}; align-items: center; gap: 10px">
+      <span data-anim aria-hidden="true" style="position: relative; flex: 0 0 auto; display: inline-block; width: 30px; height: 30px; animation: jm-flick 6s infinite">
+        <svg viewBox="0 0 32 32" width="30" height="30" style="position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 0 3px {{t.bp}})"><path d="M3 11V3h8M29 21v8h-8" fill="none" stroke="{{t.bp}}" stroke-width="2.6" stroke-linecap="square"></path></svg>
+        <span data-anim lang="ja" style="position: absolute; top: 0; right: 0; bottom: 4px; left: 0; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.text}}; opacity: 0; animation: jm-ja 6s infinite">字</span>
+        <span data-anim style="position: absolute; top: 0; right: 0; bottom: 4px; left: 0; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.text}}; opacity: 1; animation: jm-ko 6s infinite">자</span>
+        <span data-anim style="position: absolute; top: 0; right: 0; bottom: 4px; left: -2px; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.bp}}; opacity: 0; animation: jm-gh 6s infinite">자</span>
+        <span data-anim style="position: absolute; left: 9px; right: 9px; bottom: 5px; height: 2px; background: {{t.bs}}; box-shadow: 0 0 4px {{t.bs}}; transform-origin: left; animation: jm-bar 6s infinite"></span>
+      </span>
+      <sc-if value="{{ side.open }}" hint-placeholder-val="{{ true }}">
+        <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.15">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.14em; color: {{t.text}}; text-shadow: {{t.bText}}">JAMAK</span>
+          <span style="font-size: 10px; color: {{t.muted}}"><span lang="ja" style="font-family: 'Noto Sans JP', sans-serif">字幕</span> → 자막</span>
+        </div>
+      </sc-if>
+      <button type="button" onClick="{{ side.toggle }}" aria-label="{{side.toggleLabel}}" aria-expanded="{{ side.open }}" style="flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid {{t.line}}; border-radius: 4px; background: {{t.field}}; color: {{t.muted}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4zM9 5v14"></path><path d="{{side.chevron}}"></path></svg>
+      </button>
+    </div>
+    <sc-for list="{{ side.groups }}" as="g" hint-placeholder-count="2">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="padding: {{side.groupPad}}; margin-bottom: 2px; font-size: {{side.groupSize}}; text-align: {{side.align}}; color: {{t.muted}}">{{g.name}}</span>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+          <a href="{{it.href}}" aria-current="{{it.current}}" title="{{it.label}}" style="display: flex; flex-direction: {{side.itemDir}}; align-items: center; justify-content: {{side.justify}}; gap: {{side.itemGap}}; min-height: {{side.itemH}}; padding: {{side.itemPad}}; border-radius: 4px; border: 1px solid {{it.border}}; text-decoration: none; color: {{it.fg}}; background: {{it.bg}}; font-size: {{side.itemSize}}; font-weight: {{it.weight}}; line-height: 1.2; text-align: center">
+            <svg aria-hidden="true" width="{{side.icon}}" height="{{side.icon}}" viewBox="0 0 24 24" fill="none" stroke="{{it.stroke}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; filter: {{it.fx}}"><path d="{{it.d}}"></path></svg>
+            <span>{{it.text}}</span>
+          </a>
+        </sc-for>
+      </div>
+    </sc-for>
+    <span style="margin-top: auto; padding: {{side.groupPad}}; font-family: 'Chakra Petch', sans-serif; font-size: 10px; letter-spacing: 0.1em; text-align: {{side.align}}; color: {{t.muted}}">V0.1.0</span>
+  </nav>
+
+  <div style="flex: 999 1 480px; min-width: 0; min-height: 0; display: flex; flex-direction: column">
+
+    <header style="flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 50px; padding: 6px 16px; box-sizing: border-box">
+      <div style="display: flex; flex-direction: column; min-width: 0; line-height: 1.3">
+        <span style="font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; color: {{t.s}}">SETTINGS</span>
+        <h1 style="margin: 0; font-size: 16px; font-weight: 700">시스템 상태</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+        <nav aria-label="설정 영역" style="display: flex; gap: 2px; padding: 3px; border: 1px solid {{t.line}}; border-radius: 4px; background: {{t.card}}">
+          <a href="Settings.html" style="display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 3px; border: 1px solid transparent; color: {{t.muted}}; text-decoration: none; font-size: 12px; font-weight: 500">번역 엔진</a>
+          <a href="System.html" aria-current="page" style="display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 3px; border: 1px solid {{t.pLine}}; background: {{t.pSoft}}; color: {{t.text}}; text-decoration: none; font-size: 12px; font-weight: 700">시스템 상태</a>
+        </nav>
+        <button type="button" style="min-height: 32px; padding: 0 12px; border: 1px solid {{t.sLine}}; border-radius: 3px; background: transparent; font: inherit; font-size: 12px; font-weight: 500; color: {{t.s}}; cursor: pointer">다시 확인</button>
+      </div>
+    </header>
+
+    <div role="region" aria-label="본문" tabindex="0" style="flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 10px; border: 1px solid {{t.lineHi}}; border-radius: 6px; background: {{t.panel}}; box-shadow: 0 0 0 1px {{t.pHalo}}, 0 0 40px {{t.pHalo}}">
+      <div style="max-width: 1200px; margin: 0 auto; padding: 14px 18px 20px; display: flex; flex-direction: column; gap: 12px">
+
+        <section aria-label="점검 요약" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 14px; background: {{t.card}}; border: 1px solid {{t.line}}; border-radius: 6px">
+          <span style="font-weight: 700; font-size: 14px">점검 결과</span>
+          <span style="display: flex; flex-wrap: wrap; gap: 4px">
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{t.okLine}}; background: {{t.okSoft}}; color: {{t.ok}}; font-size: 12px; font-weight: 500">정상 {{okCount}}</span>
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{t.warnLine}}; background: {{t.warnSoft}}; color: {{t.warn}}; font-size: 12px; font-weight: 500">주의 {{warnCount}}</span>
+            <span style="padding: 1px 8px; border-radius: 3px; border: 1px solid {{t.errLine}}; background: {{t.errSoft}}; color: {{t.err}}; font-size: 12px; font-weight: 500">오류 {{errCount}}</span>
+          </span>
+          <span style="margin-left: auto; color: {{t.muted}}; font-size: 11px">마지막 확인 21:40 · 실시간 사용량은 아래 모니터에 표시됩니다</span>
+        </section>
+
+        <ul style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px">
+          <sc-for list="{{ checks }}" as="c" hint-placeholder-count="11">
+            <li style="box-sizing: border-box; padding: 10px 12px; background: {{t.card}}; border: 1px solid {{c.border}}; border-radius: 6px; display: flex; flex-direction: column; gap: 4px; line-height: 1.4">
+              <span style="display: flex; align-items: center; justify-content: space-between; gap: 6px">
+                <span style="font-size: 11px; color: {{t.muted}}">{{c.area}}</span>
+                <span style="padding: 0 6px; border-radius: 3px; border: 1px solid {{c.badgeLine}}; font-size: 11px; font-weight: 500; background: {{c.badgeBg}}; color: {{c.badgeFg}}">{{c.badge}}</span>
+              </span>
+              <span style="font-weight: 700; overflow-wrap: anywhere">{{c.title}}</span>
+              <span style="font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; color: {{t.muted}}; overflow-wrap: anywhere">{{c.detail}}</span>
+              <sc-if value="{{ c.hasBar }}" hint-placeholder-val="{{ false }}">
+                <span aria-hidden="true" style="display: block; height: 4px; margin-top: 2px; background: {{t.line}}"><span style="display: block; width: {{c.bar}}; height: 4px; background: {{c.badgeFg}}; box-shadow: 0 0 6px {{c.badgeFg}}"></span></span>
+              </sc-if>
+              <sc-if value="{{ c.hasFix }}" hint-placeholder-val="{{ false }}">
+                <span style="margin-top: 2px; padding: 6px 8px; border-radius: 3px; border: 1px solid {{c.badgeLine}}; background: {{c.badgeBg}}; color: {{t.text}}; font-size: 11px">{{c.fix}}</span>
+              </sc-if>
+            </li>
+          </sc-for>
+        </ul>
+
+      </div>
+    </div>
+
+    <footer aria-label="시스템 모니터" style="flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 30px; padding: 4px 16px; box-sizing: border-box; font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; color: {{t.muted}}">
+      <sc-for list="{{ meters }}" as="m" hint-placeholder-count="4">
+        <span style="display: inline-flex; align-items: center; gap: 6px">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">{{m.label}}</span>
+          <span aria-hidden="true" style="display: inline-block; width: 48px; height: 4px; background: {{t.line}}"><span style="display: block; width: {{m.pct}}; height: 4px; background: {{m.color}}; box-shadow: 0 0 6px {{m.color}}"></span></span>
+          <span style="display: inline-block; min-width: {{m.w}}; color: {{t.text}}; font-variant-numeric: tabular-nums">{{m.text}}</span>
+        </span>
+      </sc-for>
+      <span style="margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px">
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-family: 'Noto Sans KR', sans-serif; color: {{t.text}}"><span data-anim aria-hidden="true" style="width: 7px; height: 7px; border-radius: 999px; background: {{svcColor}}; box-shadow: 0 0 6px {{svcColor}}; animation: jm-pulse 2s infinite"></span>{{svcText}}</span>
+        <span>RTX 4080 · Ryzen 7 7800X3D</span>
+      </span>
+    </footer>
+  </div>
+</div>
+</script>
+<script type="text/x-dc-logic" data-props='{"palette":{"editor":"enum","options":["seoul","acid","ice","blade"],"default":"seoul"},"sidebar":{"editor":"enum","options":["open","hidden"],"default":"open"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tick: 0, collapsed: null };
+  }
+  componentDidMount() { this._mon = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 2000); }
+  componentWillUnmount() { clearInterval(this._mon); }
+  theme() {
+    const P = {
+      seoul: { bg: '#07050F', side: '#0B0817', panel: '#0E0A1C', card: '#141026', field: '#1A1530', line: '#2A2246', lineHi: '#3D3363', text: '#EEEAFF', muted: '#A49CC8', p: '#FF2E97', s: '#00E5FF', pInk: '#14000A', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF773D' },
+      acid: { bg: '#040705', side: '#070C08', panel: '#0A100B', card: '#0F1711', field: '#142017', line: '#1F3023', lineHi: '#2E4734', text: '#E8F6E6', muted: '#93AC97', p: '#C6FF1A', s: '#B26BFF', pInk: '#0D1400', ok: '#2AF9D1', warn: '#FDB34C', err: '#FF5468' },
+      ice: { bg: '#02060C', side: '#040A13', panel: '#06101C', card: '#0A1626', field: '#0F1D31', line: '#18304B', lineHi: '#244667', text: '#E2F3FF', muted: '#8EA9C4', p: '#2DF0FF', s: '#FF4FD8', pInk: '#001418', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF674C' },
+      blade: { bg: '#09080A', side: '#0D0B0D', panel: '#110E10', card: '#181416', field: '#201A1C', line: '#332A2B', lineHi: '#4A3C3C', text: '#F6ECE6', muted: '#B3A39C', p: '#FF7A1A', s: '#19F0D0', pInk: '#1A0A00', ok: '#9AFC63', warn: '#FFDD44', err: '#FF4989' }
+    };
+    const b = P[this.props.palette] || P.seoul;
+    const a = function (h, x) { const n = parseInt(h.slice(1), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + x + ')'; };
+    return Object.assign({}, b, {
+      bp: '#FF2E97', bs: '#00E5FF', bText: '0 0 12px rgba(255,46,151,0.55)', bLine: 'rgba(255,46,151,0.5)', 
+      pSoft: a(b.p, 0.12), pLine: a(b.p, 0.5), pHalo: a(b.p, 0.07), grid: a(b.p, 0.045),
+      pGlow: '0 0 0 1px ' + a(b.p, 0.6) + ', 0 0 18px ' + a(b.p, 0.45),
+      pText: '0 0 12px ' + a(b.p, 0.55),
+      sSoft: a(b.s, 0.12), sLine: a(b.s, 0.45),
+      okSoft: a(b.ok, 0.1), okLine: a(b.ok, 0.35),
+      warnSoft: a(b.warn, 0.1), warnLine: a(b.warn, 0.4),
+      errSoft: a(b.err, 0.1), errLine: a(b.err, 0.45),
+      iconFx: 'drop-shadow(0 0 4px ' + a(b.p, 0.8) + ')'
+    });
+  }
+  isCollapsed() {
+    return this.state.collapsed !== null ? this.state.collapsed : (this.props.sidebar ?? 'open') === 'hidden';
+  }
+  sidebar(active, t) {
+    const self = this;
+    const shut = this.isCollapsed();
+    const I = {
+      home: 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5',
+      progress: 'M3 12h4l3-8 4 16 3-8h4',
+      review: 'M4 6h16M4 12h10M4 18h7M15 18l2 2 4-4',
+      engine: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M13 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M7 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0',
+      system: 'M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4'
+    };
+    const item = function (id, href, label, short) {
+      const on = id === active;
+      return { href: href, label: label, text: shut ? short : label, d: I[id], current: on ? 'page' : 'false',
+        bg: on ? t.pSoft : 'transparent', border: on ? t.pLine : 'transparent', fg: on ? t.text : t.muted,
+        stroke: on ? t.p : t.muted, fx: on ? t.iconFx : 'none', weight: on ? '700' : '400' };
+    };
+    return {
+      open: !shut,
+      toggle: function () { self.setState({ collapsed: !shut }); },
+      toggleLabel: shut ? '사이드바 펼치기' : '사이드바 접기',
+      chevron: shut ? 'M13 10l2 2-2 2' : 'M16 10l-2 2 2 2',
+      w: shut ? '68px' : '200px', pad: shut ? '12px 6px' : '14px 10px', logoDir: shut ? 'column' : 'row',
+      groupPad: shut ? '0' : '0 8px', groupSize: shut ? '10px' : '11px', align: shut ? 'center' : 'left',
+      itemDir: shut ? 'column' : 'row', justify: shut ? 'center' : 'flex-start', itemGap: shut ? '3px' : '10px',
+      itemH: shut ? '48px' : '34px', itemPad: shut ? '6px 2px' : '0 10px', itemSize: shut ? '10px' : '13px', icon: shut ? 18 : 16,
+      groups: [
+        { name: '작업', items: [item('home', 'Main.dc.html', '홈', '홈'), item('progress', 'Progress.dc.html', '진행 중인 작업', '진행'), item('review', 'Review.dc.html', '검수·편집', '검수·편집')] },
+        { name: '설정', items: [item('engine', 'Settings.dc.html', '번역 엔진', '번역 엔진'), item('system', 'System.dc.html', '시스템 상태', '시스템')] }
+      ]
+    };
+  }
+  monitor(b, t) {
+    const k = this.state.tick;
+    const w = function (i) { return Math.sin(k * 1.3 + i * 2.4) * 0.5 + Math.sin(k * 0.7 + i) * 0.5; };
+    const clamp = function (v) { return Math.max(0, Math.min(100, v)); };
+    const gpu = clamp(b.gpu + b.gpuAmp * w(0));
+    const vram = b.vram + 0.15 * w(1);
+    const cpu = clamp(b.cpu + b.cpuAmp * w(2));
+    const ram = b.ram + 0.2 * w(3);
+    const vp = vram / 16 * 100, rp = ram / 31.2 * 100;
+    return [
+      { label: 'GPU', pct: gpu.toFixed(0) + '%', color: t.p, text: gpu.toFixed(0) + '%', w: '4ch' },
+      { label: 'VRAM', pct: vp.toFixed(0) + '%', color: vp >= 85 ? t.warn : t.s, text: vram.toFixed(1) + ' / 16 GB', w: '12ch' },
+      { label: 'CPU', pct: cpu.toFixed(0) + '%', color: t.p, text: cpu.toFixed(0) + '%', w: '4ch' },
+      { label: 'RAM', pct: rp.toFixed(0) + '%', color: rp >= 85 ? t.warn : t.s, text: ram.toFixed(1) + ' / 31.2 GB', w: '14ch' }
+    ];
+  }
+  renderVals() {
+    const t = this.theme();
+    const tone = {
+      ok: { badge: '정상', badgeBg: t.okSoft, badgeFg: t.ok, badgeLine: t.okLine, border: t.line },
+      warn: { badge: '주의', badgeBg: t.warnSoft, badgeFg: t.warn, badgeLine: t.warnLine, border: t.warnLine },
+      err: { badge: '오류', badgeBg: t.errSoft, badgeFg: t.err, badgeLine: t.errLine, border: t.errLine },
+      off: { badge: '미사용', badgeBg: t.field, badgeFg: t.muted, badgeLine: t.lineHi, border: t.line }
+    };
+    const raw = [
+      { s: 'ok', area: 'GPU', title: 'NVIDIA GeForce RTX 4080', detail: '드라이버 621.24 · VRAM 16 GB' },
+      { s: 'ok', area: 'CPU · 메모리', title: 'AMD Ryzen 7 7800X3D', detail: '8코어 16스레드 · RAM 31.2 GB' },
+      { s: 'ok', area: 'CUDA', title: 'faster-whisper · CUDA float16 사용 가능', detail: 'cuBLAS 12 · cuDNN 9' },
+      { s: 'ok', area: '음성 인식 모델', title: 'Whisper large-v3', detail: 'models/whisper' },
+      { s: 'ok', area: '번역 서버', title: 'llama-server b12675 · CUDA 12.4', detail: '%LOCALAPPDATA%\\jamak_converter\\bin\\llama-server' },
+      { s: 'warn', area: '번역 모델 (GGUF)', title: 'gemma-4-12b-it-qat-q4_0.gguf', detail: '내려받는 중 · 6.1 GB 받음', bar: '85%', fix: '다운로드가 끝나면 다시 확인을 누르세요. 그 전까지 로컬 프로필로는 번역할 수 없습니다.' },
+      { s: 'err', area: '외부 서버 프로필', title: 'Ollama (다른 PC)', detail: 'http://127.0.0.1:11434/v1 응답 없음', fix: 'Ollama가 실행 중인지, 프로필의 서버 주소가 맞는지 확인하세요.' },
+      { s: 'ok', area: '클라우드 번역', title: 'Claude · 키 1개', detail: '개인 키 ••••a1b2 · 연결 테스트 통과' },
+      { s: 'off', area: '클라우드 번역', title: 'Gemini', detail: '등록된 키 없음', fix: '쓰려면 설정 › 번역 엔진에서 키를 추가하세요.' },
+      { s: 'ok', area: '도구', title: 'FFmpeg · ffprobe', detail: 'PATH에서 찾음' },
+      { s: 'ok', area: '저장 공간', title: '작업 캐시 3개 · 2.4 GB', detail: 'jobs/ · jamak.db', fix: '캐시를 지우면 다음 처리 때 모든 단계를 처음부터 다시 실행합니다.' }
+    ];
+    let okCount = 0, warnCount = 0, errCount = 0;
+    const checks = raw.map(function (c) {
+      if (c.s === 'ok') okCount++;
+      if (c.s === 'warn') warnCount++;
+      if (c.s === 'err') errCount++;
+      return Object.assign({}, c, tone[c.s], { hasBar: !!c.bar, hasFix: !!c.fix });
+    });
+    return {
+      t: t,
+      side: this.sidebar('system', t),
+      meters: this.monitor({ gpu: 4, gpuAmp: 2, vram: 1.2, cpu: 7, cpuAmp: 3, ram: 16.9 }, t),
+      svcColor: t.ok,
+      svcText: '백엔드 연결됨 · 대기 중',
+      checks: checks, okCount: okCount, warnCount: warnCount, errCount: errCount
+    };
+  }
+}
+</script>
+<script src="./dc-lite.js"></script>
+</body>
+</html>

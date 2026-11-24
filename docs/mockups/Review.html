@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jamak · 검수·편집</title>
+<link rel="icon" href="../brand/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div id="dc-root"></div>
+<script type="text/x-dc-template">
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700;900&amp;family=Noto+Sans+JP:wght@500;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#050409}
+a{color:inherit}a:hover{color:inherit}
+:focus-visible{outline:2px solid #FFFFFF;outline-offset:2px}
+@keyframes jm-ja{0%,44%{opacity:1}47%,94%{opacity:0}97%,100%{opacity:1}}
+@keyframes jm-ko{0%,44%{opacity:0}47%,94%{opacity:1}97%,100%{opacity:0}}
+@keyframes jm-gh{0%,43.5%{opacity:0}44%{opacity:1;clip-path:inset(12% 0 58% 0);transform:translateX(-6%)}45.5%{opacity:1;clip-path:inset(56% 0 14% 0);transform:translateX(5%)}47%{opacity:1;clip-path:inset(32% 0 38% 0);transform:translateX(-3%)}48%,93.5%{opacity:0}94%{opacity:1;clip-path:inset(60% 0 10% 0);transform:translateX(6%)}95.5%{opacity:1;clip-path:inset(8% 0 62% 0);transform:translateX(-5%)}97%{opacity:1;clip-path:inset(40% 0 30% 0);transform:translateX(3%)}98%,100%{opacity:0}}
+@keyframes jm-bar{0%{transform:scaleX(0)}14%,42%{transform:scaleX(1)}47%{transform:scaleX(0)}61%,92%{transform:scaleX(1)}97%,100%{transform:scaleX(0)}}
+@keyframes jm-flick{0%,43%,48%,93%,98%,100%{opacity:1}44%{opacity:.35}45%{opacity:1}46%{opacity:.6}94%{opacity:.4}95%{opacity:1}96%{opacity:.7}}
+@keyframes jm-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){[data-anim]{animation:none !important}}
+</style>
+</helmet>
+<div style="height: 100vh; overflow: auto; display: flex; flex-wrap: wrap; background-color: {{t.bg}}; background-image: linear-gradient({{t.grid}} 1px, transparent 1px), linear-gradient(90deg, {{t.grid}} 1px, transparent 1px); background-size: 28px 28px; color: {{t.text}}; font-family: 'Noto Sans KR', system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+
+  <nav aria-label="주 메뉴" style="flex: 0 0 {{side.w}}; box-sizing: border-box; overflow-y: auto; background: {{t.side}}; border-right: 1px solid {{t.line}}; padding: {{side.pad}}; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-direction: {{side.logoDir}}; align-items: center; gap: 10px">
+      <span data-anim aria-hidden="true" style="position: relative; flex: 0 0 auto; display: inline-block; width: 30px; height: 30px; animation: jm-flick 6s infinite">
+        <svg viewBox="0 0 32 32" width="30" height="30" style="position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 0 3px {{t.bp}})"><path d="M3 11V3h8M29 21v8h-8" fill="none" stroke="{{t.bp}}" stroke-width="2.6" stroke-linecap="square"></path></svg>
+        <span data-anim lang="ja" style="position: absolute; top: 0; right: 0; bottom: 4px; left: 0; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans JP', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.text}}; opacity: 0; animation: jm-ja 6s infinite">字</span>
+        <span data-anim style="position: absolute; top: 0; right: 0; bottom: 4px; left: 0; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.text}}; opacity: 1; animation: jm-ko 6s infinite">자</span>
+        <span data-anim style="position: absolute; top: 0; right: 0; bottom: 4px; left: -2px; display: flex; align-items: center; justify-content: center; font-family: 'Noto Sans KR', sans-serif; font-weight: 900; font-size: 16px; line-height: 1; color: {{t.bp}}; opacity: 0; animation: jm-gh 6s infinite">자</span>
+        <span data-anim style="position: absolute; left: 9px; right: 9px; bottom: 5px; height: 2px; background: {{t.bs}}; box-shadow: 0 0 4px {{t.bs}}; transform-origin: left; animation: jm-bar 6s infinite"></span>
+      </span>
+      <sc-if value="{{ side.open }}" hint-placeholder-val="{{ true }}">
+        <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.15">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.14em; color: {{t.text}}; text-shadow: {{t.bText}}">JAMAK</span>
+          <span style="font-size: 10px; color: {{t.muted}}"><span lang="ja" style="font-family: 'Noto Sans JP', sans-serif">字幕</span> → 자막</span>
+        </div>
+      </sc-if>
+      <button type="button" onClick="{{ side.toggle }}" aria-label="{{side.toggleLabel}}" aria-expanded="{{ side.open }}" style="flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid {{t.line}}; border-radius: 4px; background: {{t.field}}; color: {{t.muted}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4zM9 5v14"></path><path d="{{side.chevron}}"></path></svg>
+      </button>
+    </div>
+    <sc-for list="{{ side.groups }}" as="g" hint-placeholder-count="2">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="padding: {{side.groupPad}}; margin-bottom: 2px; font-size: {{side.groupSize}}; text-align: {{side.align}}; color: {{t.muted}}">{{g.name}}</span>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+          <a href="{{it.href}}" aria-current="{{it.current}}" title="{{it.label}}" style="display: flex; flex-direction: {{side.itemDir}}; align-items: center; justify-content: {{side.justify}}; gap: {{side.itemGap}}; min-height: {{side.itemH}}; padding: {{side.itemPad}}; border-radius: 4px; border: 1px solid {{it.border}}; text-decoration: none; color: {{it.fg}}; background: {{it.bg}}; font-size: {{side.itemSize}}; font-weight: {{it.weight}}; line-height: 1.2; text-align: center">
+            <svg aria-hidden="true" width="{{side.icon}}" height="{{side.icon}}" viewBox="0 0 24 24" fill="none" stroke="{{it.stroke}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; filter: {{it.fx}}"><path d="{{it.d}}"></path></svg>
+            <span>{{it.text}}</span>
+          </a>
+        </sc-for>
+      </div>
+    </sc-for>
+    <span style="margin-top: auto; padding: {{side.groupPad}}; font-family: 'Chakra Petch', sans-serif; font-size: 10px; letter-spacing: 0.1em; text-align: {{side.align}}; color: {{t.muted}}">V0.1.0</span>
+  </nav>
+
+  <div style="flex: 999 1 480px; min-width: 0; min-height: 0; display: flex; flex-direction: column">
+
+    <header style="flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 50px; padding: 6px 16px; box-sizing: border-box">
+      <div style="display: flex; flex-direction: column; min-width: 0; line-height: 1.3">
+        <span style="font-family: 'Chakra Petch', 'Noto Sans KR', sans-serif; font-size: 11px; font-weight: 600; color: {{t.s}}"><span style="letter-spacing: 0.14em">REVIEW</span> · 21:37 완료 · 352줄 · 로컬 Gemma 4 12B</span>
+        <h1 style="margin: 0; font-size: 16px; font-weight: 700">episode03.mkv</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: {{t.muted}}">
+          형식
+          <select id="rv-format" style="min-height: 32px; padding: 0 8px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: {{t.field}}; font: inherit; font-size: 13px; color: {{t.text}}">
+            <option>SRT</option>
+            <option>ASS</option>
+            <option>VTT</option>
+            <option>이중 자막 ASS (일본어 + 한국어)</option>
+          </select>
+        </label>
+        <button type="button" style="min-height: 32px; padding: 0 12px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: transparent; font: inherit; font-size: 12px; font-weight: 500; color: {{t.text}}; cursor: pointer">폴더 열기</button>
+        <button type="button" style="min-height: 32px; padding: 0 16px; border: 0; border-radius: 3px; background: {{t.p}}; font: inherit; font-weight: 700; color: {{t.pInk}}; cursor: pointer; box-shadow: {{t.pGlow}}">영상 옆에 저장</button>
+      </div>
+    </header>
+
+    <div role="region" aria-label="본문" tabindex="0" style="flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 10px; border: 1px solid {{t.lineHi}}; border-radius: 6px; background: {{t.panel}}; box-shadow: 0 0 0 1px {{t.pHalo}}, 0 0 40px {{t.pHalo}}">
+      <div style="max-width: 1200px; margin: 0 auto; padding: 0 18px 20px; display: flex; flex-direction: column; gap: 10px">
+
+        <div style="position: sticky; top: 0; z-index: 2; margin: 0 -18px; padding: 10px 18px 8px; background: {{t.panel}}; border-bottom: 1px solid {{t.line}}; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+            <label style="flex: 1 1 240px; display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: {{t.field}}">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.muted}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+              <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">원문 또는 번역 검색</span>
+              <input id="rv-search" type="search" placeholder="원문·번역에서 찾기" style="flex: 1 1 auto; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; color: {{t.text}}">
+            </label>
+            <div role="group" aria-label="필터" style="display: flex; flex-wrap: wrap; gap: 4px">
+              <button type="button" aria-pressed="true" style="min-height: 28px; padding: 0 10px; border: 1px solid {{t.p}}; border-radius: 3px; background: {{t.p}}; color: {{t.pInk}}; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">전체 352</button>
+              <button type="button" aria-pressed="false" style="min-height: 28px; padding: 0 10px; border: 1px solid {{t.warnLine}}; border-radius: 3px; background: {{t.warnSoft}}; color: {{t.warn}}; font: inherit; font-size: 12px; cursor: pointer">길이 초과 {{warnCount}}</button>
+              <button type="button" aria-pressed="false" style="min-height: 28px; padding: 0 10px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: transparent; color: {{t.text}}; font: inherit; font-size: 12px; cursor: pointer">수정됨·잠금 {{lockCount}}</button>
+            </div>
+          </div>
+          <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ true }}">
+            <div role="region" aria-label="선택한 줄 작업" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 5px 8px 5px 12px; border-radius: 4px; border: 1px solid {{t.pLine}}; background: {{t.side}}; box-shadow: 0 0 18px {{t.pHalo}}; font-size: 12px">
+              <span style="font-weight: 700; color: {{t.p}}">{{selectedCount}}줄 선택됨</span>
+              <label style="display: flex; align-items: center; gap: 6px; color: {{t.muted}}">
+                다시 번역할 프로필
+                <select id="rv-profile" style="min-height: 28px; padding: 0 8px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: {{t.field}}; font: inherit; font-size: 12px; color: {{t.text}}">
+                  <option>Claude · Opus (claude-opus-5-5)</option>
+                  <option>로컬 · Gemma 4 12B</option>
+                </select>
+              </label>
+              <button type="button" style="min-height: 28px; padding: 0 12px; border: 0; border-radius: 3px; background: {{t.p}}; color: {{t.pInk}}; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: {{t.pGlow}}">선택한 줄 다시 번역</button>
+              <span style="font-size: 11px; color: {{t.muted}}">직접 고친 줄(잠금)은 덮어쓰지 않습니다</span>
+              <button type="button" onClick="{{ clearSel }}" style="margin-left: auto; min-height: 28px; padding: 0 10px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: transparent; color: {{t.text}}; font: inherit; font-size: 12px; cursor: pointer">선택 해제</button>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="background: {{t.card}}; border: 1px solid {{t.line}}; border-radius: 6px; overflow-x: auto">
+          <table style="width: 100%; min-width: 820px; border-collapse: collapse; text-align: left">
+            <thead>
+              <tr style="background: {{t.field}}; color: {{t.muted}}; font-size: 11px">
+                <th scope="col" style="width: 32px; padding: 6px 0 6px 12px; font-weight: 500"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">선택</span></th>
+                <th scope="col" style="width: 28px; padding: 6px; font-weight: 500">#</th>
+                <th scope="col" style="width: 96px; padding: 6px; font-weight: 500">시간</th>
+                <th scope="col" style="padding: 6px; font-weight: 500">원문 (일본어)</th>
+                <th scope="col" style="padding: 6px; font-weight: 500">번역 (한국어)</th>
+                <th scope="col" style="width: 84px; padding: 6px 12px 6px 6px; font-weight: 500">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="12">
+                <tr style="border-top: 1px solid {{t.line}}; background: {{r.rowBg}}; vertical-align: top">
+                  <td style="padding: 9px 0 6px 12px"><input type="checkbox" aria-label="{{r.selLabel}}" checked="{{ r.selected }}" onChange="{{ r.toggle }}" style="margin: 0; width: 15px; height: 15px; accent-color: {{t.p}}"></td>
+                  <td style="padding: 9px 6px 6px; color: {{t.muted}}; font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px">{{r.id}}</td>
+                  <td style="padding: 8px 6px 6px; font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; line-height: 1.4; color: {{t.s}}; white-space: pre-line">{{r.time}}</td>
+                  <td lang="ja" style="padding: 8px 6px 6px; font-family: 'Noto Sans JP', 'Noto Sans KR', sans-serif; line-height: 1.4; color: {{t.muted}}">{{r.ja}}</td>
+                  <td style="padding: 4px 6px">
+                    <span style="display: flex; align-items: flex-end; gap: 6px">
+                      <textarea aria-label="{{r.koLabel}}" rows="{{r.rows}}" value="{{ r.ko }}" onChange="{{ r.onEdit }}" style="box-sizing: border-box; flex: 1 1 auto; min-width: 0; min-height: 30px; resize: vertical; padding: 5px 7px; border: 1px solid {{r.koBorder}}; border-radius: 3px; background: {{t.field}}; font: inherit; line-height: 1.4; color: {{t.text}}"></textarea>
+                      <span style="flex: 0 0 auto; padding-bottom: 6px; font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 10px; color: {{r.lenFg}}">{{r.len}}</span>
+                    </span>
+                  </td>
+                  <td style="padding: 8px 12px 6px 6px">
+                    <span style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 3px">
+                      <sc-if value="{{ r.locked }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 3px; border: 1px solid {{t.sLine}}; background: {{t.sSoft}}; color: {{t.s}}; font-size: 11px; font-weight: 500"><svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{{t.s}}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>수정됨</span></sc-if>
+                      <sc-if value="{{ r.warn }}" hint-placeholder-val="{{ false }}"><span style="padding: 0 6px; border-radius: 3px; border: 1px solid {{t.warnLine}}; background: {{t.warnSoft}}; color: {{t.warn}}; font-size: 11px; font-weight: 500">길이 초과</span></sc-if>
+                      <sc-if value="{{ r.ok }}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: {{t.muted}}">—</span></sc-if>
+                    </span>
+                  </td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: {{t.muted}}; font-size: 12px">
+          <span>1–12 / 352줄 · 한 자막 최대 {{maxChars}}자</span>
+          <span style="display: flex; gap: 4px">
+            <button type="button" aria-label="이전 쪽" style="min-width: 32px; min-height: 28px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: transparent; font: inherit; color: {{t.text}}; cursor: pointer">‹</button>
+            <button type="button" aria-label="다음 쪽" style="min-width: 32px; min-height: 28px; border: 1px solid {{t.lineHi}}; border-radius: 3px; background: transparent; font: inherit; color: {{t.text}}; cursor: pointer">›</button>
+          </span>
+        </div>
+
+      </div>
+    </div>
+
+    <footer aria-label="시스템 모니터" style="flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 30px; padding: 4px 16px; box-sizing: border-box; font-family: 'JetBrains Mono', 'Noto Sans KR', monospace; font-size: 11px; color: {{t.muted}}">
+      <sc-for list="{{ meters }}" as="m" hint-placeholder-count="4">
+        <span style="display: inline-flex; align-items: center; gap: 6px">
+          <span style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">{{m.label}}</span>
+          <span aria-hidden="true" style="display: inline-block; width: 48px; height: 4px; background: {{t.line}}"><span style="display: block; width: {{m.pct}}; height: 4px; background: {{m.color}}; box-shadow: 0 0 6px {{m.color}}"></span></span>
+          <span style="display: inline-block; min-width: {{m.w}}; color: {{t.text}}; font-variant-numeric: tabular-nums">{{m.text}}</span>
+        </span>
+      </sc-for>
+      <span style="margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px">
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-family: 'Noto Sans KR', sans-serif; color: {{t.text}}"><span data-anim aria-hidden="true" style="width: 7px; height: 7px; border-radius: 999px; background: {{svcColor}}; box-shadow: 0 0 6px {{svcColor}}; animation: jm-pulse 2s infinite"></span>{{svcText}}</span>
+        <span>RTX 4080 · Ryzen 7 7800X3D</span>
+      </span>
+    </footer>
+  </div>
+</div>
+</script>
+<script type="text/x-dc-logic" data-props='{"maxChars":{"editor":"int","min":16,"max":60,"default":30},"palette":{"editor":"enum","options":["seoul","acid","ice","blade"],"default":"seoul"},"sidebar":{"editor":"enum","options":["open","hidden"],"default":"open"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tick: 0, collapsed: null, selected: { 7: true, 8: true }, edits: {}, locked: { 4: true } };
+  }
+  componentDidMount() { this._mon = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 2000); }
+  componentWillUnmount() { clearInterval(this._mon); }
+  theme() {
+    const P = {
+      seoul: { bg: '#07050F', side: '#0B0817', panel: '#0E0A1C', card: '#141026', field: '#1A1530', line: '#2A2246', lineHi: '#3D3363', text: '#EEEAFF', muted: '#A49CC8', p: '#FF2E97', s: '#00E5FF', pInk: '#14000A', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF773D' },
+      acid: { bg: '#040705', side: '#070C08', panel: '#0A100B', card: '#0F1711', field: '#142017', line: '#1F3023', lineHi: '#2E4734', text: '#E8F6E6', muted: '#93AC97', p: '#C6FF1A', s: '#B26BFF', pInk: '#0D1400', ok: '#2AF9D1', warn: '#FDB34C', err: '#FF5468' },
+      ice: { bg: '#02060C', side: '#040A13', panel: '#06101C', card: '#0A1626', field: '#0F1D31', line: '#18304B', lineHi: '#244667', text: '#E2F3FF', muted: '#8EA9C4', p: '#2DF0FF', s: '#FF4FD8', pInk: '#001418', ok: '#3DFF9A', warn: '#FFD43B', err: '#FF674C' },
+      blade: { bg: '#09080A', side: '#0D0B0D', panel: '#110E10', card: '#181416', field: '#201A1C', line: '#332A2B', lineHi: '#4A3C3C', text: '#F6ECE6', muted: '#B3A39C', p: '#FF7A1A', s: '#19F0D0', pInk: '#1A0A00', ok: '#9AFC63', warn: '#FFDD44', err: '#FF4989' }
+    };
+    const b = P[this.props.palette] || P.seoul;
+    const a = function (h, x) { const n = parseInt(h.slice(1), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + x + ')'; };
+    return Object.assign({}, b, {
+      bp: '#FF2E97', bs: '#00E5FF', bText: '0 0 12px rgba(255,46,151,0.55)', bLine: 'rgba(255,46,151,0.5)', 
+      pSoft: a(b.p, 0.12), pLine: a(b.p, 0.5), pHalo: a(b.p, 0.07), grid: a(b.p, 0.045),
+      pGlow: '0 0 0 1px ' + a(b.p, 0.6) + ', 0 0 18px ' + a(b.p, 0.45),
+      pText: '0 0 12px ' + a(b.p, 0.55),
+      sSoft: a(b.s, 0.12), sLine: a(b.s, 0.45),
+      okSoft: a(b.ok, 0.1), okLine: a(b.ok, 0.35),
+      warnSoft: a(b.warn, 0.1), warnLine: a(b.warn, 0.4),
+      errSoft: a(b.err, 0.1), errLine: a(b.err, 0.45),
+      iconFx: 'drop-shadow(0 0 4px ' + a(b.p, 0.8) + ')'
+    });
+  }
+  isCollapsed() {
+    return this.state.collapsed !== null ? this.state.collapsed : (this.props.sidebar ?? 'open') === 'hidden';
+  }
+  sidebar(active, t) {
+    const self = this;
+    const shut = this.isCollapsed();
+    const I = {
+      home: 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5',
+      progress: 'M3 12h4l3-8 4 16 3-8h4',
+      review: 'M4 6h16M4 12h10M4 18h7M15 18l2 2 4-4',
+      engine: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M13 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M7 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0',
+      system: 'M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4'
+    };
+    const item = function (id, href, label, short) {
+      const on = id === active;
+      return { href: href, label: label, text: shut ? short : label, d: I[id], current: on ? 'page' : 'false',
+        bg: on ? t.pSoft : 'transparent', border: on ? t.pLine : 'transparent', fg: on ? t.text : t.muted,
+        stroke: on ? t.p : t.muted, fx: on ? t.iconFx : 'none', weight: on ? '700' : '400' };
+    };
+    return {
+      open: !shut,
+      toggle: function () { self.setState({ collapsed: !shut }); },
+      toggleLabel: shut ? '사이드바 펼치기' : '사이드바 접기',
+      chevron: shut ? 'M13 10l2 2-2 2' : 'M16 10l-2 2 2 2',
+      w: shut ? '68px' : '200px', pad: shut ? '12px 6px' : '14px 10px', logoDir: shut ? 'column' : 'row',
+      groupPad: shut ? '0' : '0 8px', groupSize: shut ? '10px' : '11px', align: shut ? 'center' : 'left',
+      itemDir: shut ? 'column' : 'row', justify: shut ? 'center' : 'flex-start', itemGap: shut ? '3px' : '10px',
+      itemH: shut ? '48px' : '34px', itemPad: shut ? '6px 2px' : '0 10px', itemSize: shut ? '10px' : '13px', icon: shut ? 18 : 16,
+      groups: [
+        { name: '작업', items: [item('home', 'Main.dc.html', '홈', '홈'), item('progress', 'Progress.dc.html', '진행 중인 작업', '진행'), item('review', 'Review.dc.html', '검수·편집', '검수·편집')] },
+        { name: '설정', items: [item('engine', 'Settings.dc.html', '번역 엔진', '번역 엔진'), item('system', 'System.dc.html', '시스템 상태', '시스템')] }
+      ]
+    };
+  }
+  monitor(b, t) {
+    const k = this.state.tick;
+    const w = function (i) { return Math.sin(k * 1.3 + i * 2.4) * 0.5 + Math.sin(k * 0.7 + i) * 0.5; };
+    const clamp = function (v) { return Math.max(0, Math.min(100, v)); };
+    const gpu = clamp(b.gpu + b.gpuAmp * w(0));
+    const vram = b.vram + 0.15 * w(1);
+    const cpu = clamp(b.cpu + b.cpuAmp * w(2));
+    const ram = b.ram + 0.2 * w(3);
+    const vp = vram / 16 * 100, rp = ram / 31.2 * 100;
+    return [
+      { label: 'GPU', pct: gpu.toFixed(0) + '%', color: t.p, text: gpu.toFixed(0) + '%', w: '4ch' },
+      { label: 'VRAM', pct: vp.toFixed(0) + '%', color: vp >= 85 ? t.warn : t.s, text: vram.toFixed(1) + ' / 16 GB', w: '12ch' },
+      { label: 'CPU', pct: cpu.toFixed(0) + '%', color: t.p, text: cpu.toFixed(0) + '%', w: '4ch' },
+      { label: 'RAM', pct: rp.toFixed(0) + '%', color: rp >= 85 ? t.warn : t.s, text: ram.toFixed(1) + ' / 31.2 GB', w: '14ch' }
+    ];
+  }
+  renderVals() {
+    const self = this;
+    const t = this.theme();
+    const max = this.props.maxChars ?? 30;
+    const base = [
+      { id: 1, time: '00:01:12.340\n00:01:14.120', ja: 'おはよう。今日も早いね', ko: '좋은 아침. 오늘도 일찍 왔네' },
+      { id: 2, time: '00:01:14.600\n00:01:16.050', ja: 'だって、約束したでしょ？', ko: '그야, 약속했잖아?' },
+      { id: 3, time: '00:01:16.700\n00:01:18.900', ja: 'そんなこと言ったっけ…', ko: '내가 그런 말을 했던가…' },
+      { id: 4, time: '00:01:19.200\n00:01:20.800', ja: 'もう、忘れないでよ！', ko: '진짜, 까먹지 좀 마!' },
+      { id: 5, time: '00:01:21.400\n00:01:23.650', ja: 'ごめんごめん。じゃあ、行こうか', ko: '미안 미안. 그럼 갈까?' },
+      { id: 6, time: '00:01:24.100\n00:01:26.700', ja: '駅前の新しいカフェ、もう行った？', ko: '역 앞에 새로 생긴 카페, 가 봤어?' },
+      { id: 7, time: '00:01:27.000\n00:01:29.300', ja: 'まだだけど、ずっと気になってたんだ', ko: '아직 안 가 봤는데, 계속 궁금했어' },
+      { id: 8, time: '00:01:29.800\n00:01:34.200', ja: 'じゃあ帰りに寄ってみない？店長さん、昔の知り合いなんだって', ko: '그럼 돌아가는 길에 들러 볼래? 점장님이 예전에 알던 사람이래' },
+      { id: 9, time: '00:01:34.700\n00:01:36.300', ja: 'へえ、そうなんだ', ko: '오, 그렇구나' },
+      { id: 10, time: '00:01:36.900\n00:01:39.400', ja: 'うん。だから今日は私がおごるね', ko: '응. 그러니까 오늘은 내가 살게' },
+      { id: 11, time: '00:01:39.900\n00:01:41.200', ja: 'え、いいの？', ko: '어, 진짜?' },
+      { id: 12, time: '00:01:41.600\n00:01:44.000', ja: 'その代わり、宿題手伝ってね', ko: '대신 숙제 좀 도와줘' }
+    ];
+    const sel = this.state.selected;
+    const edits = this.state.edits;
+    const locked = this.state.locked;
+    let warnCount = 0, lockCount = 0, selectedCount = 0;
+    const rows = base.map(function (r) {
+      const ko = edits[r.id] !== undefined ? edits[r.id] : r.ko;
+      const len = ko.length;
+      const warn = len > max;
+      const isLocked = !!locked[r.id];
+      const isSel = !!sel[r.id];
+      if (warn) warnCount++;
+      if (isLocked) lockCount++;
+      if (isSel) selectedCount++;
+      return {
+        id: r.id, time: r.time, ja: r.ja, ko: ko, len: len, rows: Math.max(1, Math.ceil(len / 22)),
+        warn: warn, locked: isLocked, ok: !warn && !isLocked, selected: isSel,
+        selLabel: r.id + '번 줄 선택', koLabel: r.id + '번 줄 번역',
+        rowBg: isSel ? t.pSoft : 'transparent',
+        koBorder: warn ? t.warnLine : t.lineHi,
+        lenFg: warn ? t.warn : t.muted,
+        toggle: function () {
+          const next = Object.assign({}, self.state.selected);
+          next[r.id] = !next[r.id];
+          self.setState({ selected: next });
+        },
+        onEdit: function (e) {
+          const ne = Object.assign({}, self.state.edits);
+          ne[r.id] = e.target.value;
+          const nl = Object.assign({}, self.state.locked);
+          nl[r.id] = true;
+          self.setState({ edits: ne, locked: nl });
+        }
+      };
+    });
+    return {
+      t: t,
+      side: this.sidebar('review', t),
+      meters: this.monitor({ gpu: 3, gpuAmp: 2, vram: 1.2, cpu: 6, cpuAmp: 3, ram: 16.8 }, t),
+      svcColor: t.ok,
+      svcText: '백엔드 연결됨 · 대기 중',
+      rows: rows,
+      maxChars: max,
+      warnCount: warnCount,
+      lockCount: lockCount,
+      selectedCount: selectedCount,
+      hasSelection: selectedCount > 0,
+      clearSel: function () { self.setState({ selected: {} }); }
+    };
+  }
+}
+</script>
+<script src="./dc-lite.js"></script>
+</body>
+</html>

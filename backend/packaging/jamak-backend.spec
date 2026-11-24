@@ -6,6 +6,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 hidden = (
     collect_submodules("jamak")
     + collect_submodules("uvicorn")
+    + collect_submodules("anthropic")
+    + collect_submodules("google.genai")
     + ["websockets", "websockets.legacy", "httptools", "h11"]
 )
 

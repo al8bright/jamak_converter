@@ -1,9 +1,10 @@
 # jamak_converter
 
 일본어 영상(애니메이션·드라마)을 선택하면 **한국어 자막 파일**을 만들어 주는 데스크톱 프로그램입니다.
-음성 인식과 번역을 모두 **로컬 GPU**에서 처리하므로 API 비용이 없고, 영상과 대사가 외부로 나가지 않습니다.
+**기본은 전부 로컬, 클라우드 번역은 선택**입니다. 음성 인식과 번역을 이 PC의 GPU에서 처리하므로 기본 설정에서는 API 비용이 없고 아무것도 외부로 나가지 않습니다.
+번역만 Claude나 Gemini로 바꿀 수 있습니다. 이때도 나가는 것은 **일본어 대사 텍스트뿐**이고, 영상과 음성은 이 PC를 떠나지 않습니다.
 
-> 상태: 설계 단계 · 개발 계획은 [PLAN.md](PLAN.md)를 참고하세요.
+> 상태: Phase 0~5 완료(번역 엔진 선택 포함), 실제 영상 검증(Phase 6)만 남음 · 개발 계획은 [PLAN.md](PLAN.md)를 참고하세요.
 
 ![architecture](docs/architecture.png)
 
@@ -17,11 +18,12 @@
 |---|---|
 | 대상 콘텐츠 | 일본어 애니메이션·드라마 (배경음악·효과음이 많고, 고유명사와 말투가 중요함) |
 | 처리 방식 | 실시간이 아닌 **파일 단위 일괄 처리** (전체 문맥을 활용해 정확도 우선) |
-| 음성 인식 / 번역 | **전부 로컬** (faster-whisper + llama.cpp `llama-server`) |
+| 음성 인식 | **로컬** (faster-whisper) |
+| 번역 | 기본은 **로컬** (llama.cpp `llama-server`). 번역 프로필로 외부 OpenAI 호환 서버, **Claude**, **Gemini**를 고를 수 있음 |
 | GUI | Python 로컬 서버 + 웹 UI, **Tauri로 감싼 데스크톱 앱** |
 | 결과물 | **자막 파일만** 생성 (SRT / ASS / VTT). 재생은 별도 플레이어에서 함 |
 
-다루지 않는 것(현재 범위 밖): 실시간 번역, 영상에 자막 입히기와 MKV 자막 트랙 넣기, 클라우드 번역 API, 앱 내 영상 재생.
+다루지 않는 것(현재 범위 밖): 실시간 번역, 영상에 자막 입히기와 MKV 자막 트랙 넣기, 앱 내 영상 재생.
 
 ## 2. 처리 흐름
 
@@ -75,9 +77,11 @@ Whisper large-v3와 14B급 LLM을 **동시에 올리면 VRAM이 부족할 수 �
 
 ### 웹 UI (`app/src`)
 - React, Vite, TypeScript로 만듭니다.
-- 화면 구성: 파일 선택(대화 상자 또는 창에 끌어다 놓기) → 옵션(오디오 트랙, 인식·번역 모델, 보컬 분리, 용어집 저장·불러오기, 노래 구간, 출력 형식) → 진행률 → 자막 검수와 편집 → 저장.
-- 진행률은 WebSocket으로 받습니다. 단계별 막대(실제 처리 시간 비중대로 폭을 나눔), 현재 단계, 남은 시간 추정치가 표시됩니다.
-- 검수 화면 위쪽의 어두운 화면에 고른 줄이 실제 자막처럼 표시됩니다. 줄마다 번역과 시작·끝 시간을 고칠 수 있고, 고친 줄은 잠겨 다시 번역해도 바뀌지 않습니다. 두 줄을 넘거나 초당 15자를 넘는 줄에는 경고가 붙습니다.
+- 화면은 디자인 캔버스([docs/mockups](docs/mockups), 규칙은 [DESIGN.md](DESIGN.md))를 따릅니다. 왼쪽 사이드바(접기 가능)에 작업(홈 · 진행 중인 작업 · 검수·편집)과 설정(번역 엔진 · 시스템 상태)이 있고, 아래 모니터 줄에 GPU·VRAM·CPU·RAM 사용량이 실시간으로 나옵니다. 색 테마 4종은 시스템 상태 화면에서 바꿉니다.
+- 흐름: 홈에서 영상 선택(대화 상자 또는 창에 끌어다 놓기) → 작업 옵션(오디오 트랙, **번역 프로필**, 용어집, STT 모델, 노래 구간, 보컬 분리, 출력 형식) → 진행 → 검수·편집 → 저장.
+- 진행 화면은 WebSocket으로 단계별 상태, 전체 진행률, 남은 시간, 로그를 보여 줍니다. 로컬 프로필이면 llama-server 상태를, 클라우드 프로필이면 토큰 사용량과 예상 비용을 표시합니다.
+- 검수 화면에서는 줄마다 번역과 시작·끝 시간을 고칠 수 있고, 고친 줄은 잠겨 다시 번역해도 바뀌지 않습니다. 한 자막 글자 수나 초당 15자를 넘는 줄에는 경고가 붙습니다. 고른 줄만 **다른 프로필로** 다시 번역할 수 있습니다(예: 로컬로 번역하고 어려운 줄만 Claude로).
+- 클라우드 프로필을 처음 쓸 때 "일본어 대사 텍스트가 전송된다"는 안내를 한 번 확인받고, 옵션 화면에는 같은 문구를 계속 표시합니다.
 - 개발 중에는 Tauri 없이 브라우저만으로도 동작해야 합니다. 이때 파일 선택은 경로를 직접 입력하는 방식으로 대신합니다.
 
 ### Python 백엔드 (`backend/`)
@@ -114,6 +118,29 @@ class Translator(Protocol):
 
 번역 클라이언트는 **OpenAI 호환 API 기준**으로 작성합니다(`translate/openai_compat.py`). 그래서 설정에서 "외부 서버" 모드를 고르고 주소를 입력하면, 이미 실행 중인 Ollama, LM Studio, 다른 PC의 `llama-server`도 코드 수정 없이 쓸 수 있습니다.
 
+### 번역 프로필과 클라우드 번역
+
+번역 엔진은 **번역 프로필**(엔진 종류 + 모델 + 키·주소·옵션)로 고릅니다. 프로필을 여러 개 저장하고 하나를 기본으로 지정하며, 작업마다 바꿀 수 있습니다. 처음 실행하면 "로컬 · Gemma 4 12B" 프로필 하나가 기본으로 만들어집니다.
+
+| 종류 | 엔진 | 비고 |
+|---|---|---|
+| `local_managed` | 내장 llama-server | 번역 단계에서만 띄우고 끝나면 종료 |
+| `local_external` | OpenAI 호환 서버 | Ollama, LM Studio, 다른 PC |
+| `anthropic` | Claude (`anthropic` SDK) | Opus 5.5 / Sonnet 5.5 / Haiku 5.5. 구조화 출력으로 `[{id, ko}]`를 받고, 시스템 프롬프트와 용어집에 프롬프트 캐싱 적용. Opus·Sonnet 5.5는 서버 측 거절 대체 경로(`fallbacks: "default"`)를 켭니다 |
+| `gemini` | Gemini (`google-genai` SDK) | JSON 스키마 응답. 모델 목록은 키로 API에서 가져옴 |
+
+- 엔진과 상관없이 프롬프트, 응답 검증(id·줄 수 일치), 실패 시 묶음을 줄여 재시도하는 부분은 공통 모듈(`translate/base.py`)이 처리합니다.
+- 클라우드는 묶음을 동시에 보내고(기본 4), 429·5xx는 SDK가 재시도하며, 인증 오류는 바로 멈추고 "키 확인"을 알립니다. 사용 토큰과 예상 비용은 진행 화면과 `meta.json`에 남습니다.
+- 서비스가 번역을 거절한 줄은 "거절됨"으로 표시하고, 프로필 설정에 따라 로컬 모델로 다시 번역하거나(기본) 검수 화면에 표시만 합니다.
+- ⑥ 단계 캐시 해시에는 `종류 + 모델 + 프롬프트 버전 + 번역 옵션`이 들어가고 **API 키는 들어가지 않습니다.** 엔진을 바꾸면 ⑥과 ⑦만 다시 돕니다.
+
+### 설정 저장 (`jamak.db`)과 키 보호
+
+- 설정(API 키, 번역 프로필, 기본 프로필, 화면 설정)은 `%LOCALAPPDATA%\jamak_converter\jamak.db`(SQLite) 한 파일에 저장합니다. 작업 캐시는 지금처럼 `jobs/` 폴더의 파일입니다.
+- API 키는 **Windows DPAPI**(현재 사용자 범위)로 암호화해서 저장합니다. 저장한 뒤에는 끝 4자리만 볼 수 있고, 키 원문은 로그, 예외 메시지, `meta.json`, 캐시 해시, API 응답 어디에도 넣지 않습니다.
+- DPAPI는 DB 파일이 다른 PC나 다른 Windows 사용자에게 넘어가는 경우를 막아 줍니다. 같은 사용자로 실행된 프로그램은 복호화할 수 있다는 한계가 있습니다.
+- 개발·CLI용으로 환경 변수(`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`)도 씁니다. 우선순위는 프로필에 연결된 키 → 환경 변수입니다.
+
 ```
 %LOCALAPPDATA%/jamak_converter/
 ├─ bin/llama-server/     # llama.cpp Windows CUDA 빌드 (scripts/setup_llama.ps1이 준비)
@@ -127,10 +154,12 @@ class Translator(Protocol):
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | `GET` | `/health` | 준비 상태 (토큰 없이 허용) |
-| `GET` | `/system` | GPU·VRAM, CUDA, llama-server 빌드, GGUF 목록, STT 모델 목록, 보컬 분리 설치 여부 |
+| `GET` | `/system` | GPU·VRAM, CPU, CUDA, llama-server 빌드, GGUF 목록, STT 모델 목록, 보컬 분리 설치 여부 |
+| `GET` | `/system/usage` | 실시간 GPU·VRAM·CPU·RAM 사용량 (하단 모니터) |
+| `GET` | `/system/checks` | 점검 카드 목록: GPU, CUDA, 모델, llama-server, 번역 프로필·키, FFmpeg, 저장 공간 |
 | `GET` | `/options/default` | 기본 `PipelineOptions` |
 | `POST` | `/media/probe` | `{path}` → 길이, 오디오 트랙 목록, 자동 선택될 트랙 |
-| `POST` | `/jobs` | `{video_path, options?, force_from?}` → 작업 등록 (GPU 하나라 한 번에 하나씩 처리) |
+| `POST` | `/jobs` | `{video_path, options?, force_from?, profile_id?}` → 작업 등록 (GPU 하나라 한 번에 하나씩 처리). 프로필을 안 주면 기본 프로필 |
 | `GET` | `/jobs` | 작업 목록 (캐시 폴더 + 실행 중 상태) |
 | `GET` | `/jobs/{key}` | 단계별 정보, 옵션, 실행 상태와 최근 이벤트 |
 | `WS` | `/jobs/{key}/events` | 진행률·상태 이벤트 스트림 |
@@ -138,10 +167,16 @@ class Translator(Protocol):
 | `DELETE` | `/jobs/{key}?purge=true` | 취소, `purge`면 캐시 폴더 삭제 |
 | `GET` | `/jobs/{key}/segments` | 자막 줄 목록 + 환각 필터가 걸러낸 구간 |
 | `PATCH` | `/jobs/{key}/segments` | `{edits:[{id, ko?, ja?, start?, end?, locked?}]}`. 번역을 고치면 잠금(재번역 시 보존) |
-| `POST` | `/jobs/{key}/retranslate` | `{ids}` 고른 줄만 다시 번역 (명시적 요청이라 잠금 해제) |
+| `POST` | `/jobs/{key}/retranslate` | `{ids, profile_id?}` 고른 줄만 다시 번역. 다른 프로필로도 가능 (명시적 요청이라 잠금 해제) |
 | `POST` | `/jobs/{key}/export` | `{output?}` 자막 파일 저장 |
 | `POST` | `/fs/reveal` | 탐색기에서 파일 위치 열기 |
 | `GET/PUT/DELETE` | `/glossaries[/{name}]` | 작품별 용어집 저장 |
+| `GET/POST/DELETE` | `/settings/api-keys[/{id}]` | API 키. 목록에는 `id, provider, label, last4`만. 키 원문은 어떤 응답에도 없음 |
+| `GET/POST/PUT/DELETE` | `/settings/translation-profiles[/{id}]` | 번역 프로필 (상태·기본 여부 포함) |
+| `POST` | `/settings/translation-profiles/{id}/test` | 짧은 문장 하나를 번역해 키·모델·응답 형식 확인 |
+| `PUT` | `/settings/default-profile` | `{profile_id}` 기본 프로필 지정 |
+| `GET` | `/settings/models?kind=&key_id=` | 고를 수 있는 모델 목록 (Gemini는 키로 조회) |
+| `GET/PUT` | `/settings/ui` | 색 테마, 사이드바 접힘, 클라우드 안내 확인 여부 |
 
 ## 4. 애니·드라마에 맞춘 설계 포인트
 
@@ -247,8 +282,20 @@ pnpm dev                                             # http://localhost:5173 (�
 | `--parallel N` | 번역 묶음 N개 동시 처리 |
 | `--llm-model 경로` | 다른 GGUF 사용 |
 | `--llm-url URL` | 외부 OpenAI 호환 서버 사용 (예: Ollama `http://127.0.0.1:11434/v1`) |
+| `--profile 이름` | 저장한 번역 프로필 사용 (없으면 기본 프로필. `--llm-*` 옵션을 주면 그쪽이 우선) |
 | `--force 단계` | 캐시가 있어도 해당 단계부터 다시 실행 |
 | `--out 폴더` | 출력 폴더 (기본: 영상 옆) |
+
+#### 키와 번역 프로필 (CLI)
+
+```powershell
+uv run jamak keys add anthropic --label 개인    # 키는 화면에 보이지 않게 입력 (getpass)
+uv run jamak keys list                          # id, 제공자, 이름, ••••끝 4자리
+uv run jamak profiles add "Claude Opus" anthropic --model claude-opus-5-5 --key 1
+uv run jamak profiles test "Claude Opus"        # 문장 하나로 키·모델·응답 형식 확인
+uv run jamak profiles set-default "Claude Opus"
+uv run jamak profiles list
+```
 
 #### 테스트
 
@@ -274,19 +321,25 @@ jamak_converter/
 │  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object)
 │  │  │  ├─ stt/            # base.py, faster_whisper.py (kotoba는 모델 이름으로 선택)
 │  │  │  ├─ segmenter.py
-│  │  │  ├─ translate/      # openai_compat.py, llama_server.py, prompts.py
+│  │  │  ├─ translate/      # base.py(공통 묶음 번역), openai_compat.py, llama_server.py,
+│  │  │  │                  # anthropic_api.py, gemini_api.py, factory.py(프로필 → 엔진), prompts.py
+│  │  │  ├─ store.py        # 설정 DB (jamak.db, SQLite)
+│  │  │  ├─ secrets.py      # API 키 암호화 (Windows DPAPI)
 │  │  │  ├─ subtitle.py     # SRT/ASS/VTT 쓰기
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
-│  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐)
+│  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐), checks.py (시스템 점검·사용량)
 │  │  ├─ installer.py       # 처음 실행 때 내려받기 (FFmpeg, CUDA DLL, llama-server, 모델)
 │  │  └─ cli.py
 │  ├─ packaging/          # PyInstaller spec, 진입점
 │  └─ tests/
 ├─ app/                     # React + Vite + TS
-│  ├─ src/                 # api.ts, App.tsx, Setup.tsx, NewJob.tsx, JobView.tsx, index.css
+│  ├─ src/                 # App.tsx(셸·사이드바·모니터), Home, Options, Progress, Review, Settings, System, Setup,
+│  │                        # api.ts, job.ts, ui.tsx, theme.ts(팔레트 4종), index.css
 │  └─ src-tauri/            # Tauri 2: src/lib.rs가 백엔드 실행·토큰·종료를 담당
 ├─ docs/
+│  ├─ brand/                # 로고·파비콘 원본
+│  ├─ mockups/              # 화면 구성안 (디자인 캔버스에서 내보낸 HTML·PNG)
 │  ├─ architecture.html     # 구성도 원본 (stack-diagram)
 │  ├─ architecture.png
 │  └─ architecture-dark.png
@@ -294,7 +347,8 @@ jamak_converter/
 │  ├─ setup_llama.ps1       # (개발용) llama-server 내려받기·검증·설치
 │  └─ build_app.ps1         # 설치 파일 빌드 (PyInstaller + Tauri NSIS)
 ├─ README.md
-└─ PLAN.md
+├─ PLAN.md
+└─ DESIGN.md                # 브랜드·UI 가이드
 ```
 
 ## 8. 라이선스 메모

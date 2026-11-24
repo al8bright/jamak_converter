@@ -91,16 +91,7 @@ class Pipeline:
         fps["segment"] = fingerprint({"filters": o.filters.model_dump(mode="json"),
                                       "segment": o.segment.model_dump(mode="json"),
                                       "songs": o.songs.model_dump(mode="json"), "v": 1}, fps["stt"])
-        t = o.translate
-        if t.mode == "managed":
-            mp = Path(t.model_path) if t.model_path else default_llm_path()
-            model_id: Any = {"file": mp.name if mp else None, "size": mp.stat().st_size if mp and mp.exists() else 0}
-        else:
-            model_id = {"url": t.base_url, "name": t.model_name}
-        fps["translate"] = fingerprint({
-            "model": model_id, "batch": t.batch_size, "ctx": t.context_lines, "temp": t.temperature,
-            "parallel": t.parallel > 1, "glossary": [g.model_dump() for g in o.glossary], "v": 1,
-        }, fps["segment"])
+        fps["translate"] = fingerprint(translate_identity(o), fps["segment"])
         return fps
 
     # ------------------------------------------------------------------ run
@@ -201,12 +192,15 @@ class Pipeline:
                 o = old.get(ln.id)
                 if o and o.locked and o.ja == ln.ja:
                     ln.ko, ln.locked = o.ko, True
-        stats = run_translation(lines, self.opts, self.job,
-                                progress=lambda f, m: self.emit("translate", "progress", f, m),
-                                cancel=self.cancel)
+        def progress(f: float, m: str, usage: dict | None = None) -> None:
+            self.emit("translate", "progress", f, m, **({"usage": usage} if usage else {}))
+
+        stats = run_translation(lines, self.opts, self.job, progress=progress, cancel=self.cancel)
         write_json_atomic(ko_path, Lines(lines=lines))
         result.stats["translate"] = stats
-        return {"segment_fp": segment_fp, **{k: stats[k] for k in ("requests", "failed_lines", "completion_tokens")}}
+        keep = ("requests", "failed_lines", "refused_lines", "prompt_tokens", "completion_tokens", "cost_usd")
+        return {"segment_fp": segment_fp, "engine": engine_summary(self.opts.translate),
+                **{k: stats.get(k) for k in keep}}
 
     # ------------------------------------------------------------------ helpers
     def load_lines(self) -> Lines:
@@ -234,39 +228,74 @@ def apply_song_ranges(lines: list, songs) -> list:
     return out
 
 
+def translate_identity(o: PipelineOptions) -> dict[str, Any]:
+    """What decides the translate output: engine kind + model + prompt version + options.
+
+    Never includes the API key (or its id): switching keys does not retranslate.
+    """
+    from jamak.core.translate.prompts import PROMPT_VERSION
+
+    t = o.translate
+    if t.mode == "managed":
+        mp = Path(t.model_path) if t.model_path else default_llm_path()
+        model_id: Any = {"file": mp.name if mp else None, "size": mp.stat().st_size if mp and mp.exists() else 0}
+    elif t.mode == "external":
+        model_id = {"url": t.base_url, "name": t.model_name}
+    else:
+        model_id = {"api": t.api_model, "effort": t.effort, "refusal": t.refusal}
+    return {
+        "kind": t.mode, "model": model_id, "prompt": PROMPT_VERSION, "batch": t.batch_size,
+        "ctx": t.context_lines, "temp": t.temperature if t.mode in ("managed", "external", "gemini") else None,
+        "parallel": t.parallel > 1, "glossary": [g.model_dump() for g in o.glossary], "v": 2,
+    }
+
+
+def engine_summary(t) -> dict[str, Any]:
+    from jamak.core.translate.factory import model_label
+
+    return {"kind": t.mode, "profile_id": t.profile_id, "profile_name": t.profile_name, "model": model_label(t),
+            "cloud": t.mode in ("anthropic", "gemini")}
+
+
 def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cancel=None,
                     only_ids: set[int] | None = None) -> dict[str, Any]:
-    """Translate `lines` in place, starting/stopping llama-server when in managed mode."""
-    from jamak.core.translate.llama_server import LlamaServer
-    from jamak.core.translate.openai_compat import OpenAICompatTranslator, TranslationCancelled
+    """Translate `lines` in place with the engine in opts.translate.
+
+    progress(frac, message, usage) gets the running token/cost counters. Lines a cloud
+    service refused are retranslated with the local model when the profile says so.
+    """
+    from jamak.core.translate.base import TranslationCancelled
+    from jamak.core.translate.factory import CLOUD_MODES, local_fallback_options, open_engine
 
     t = opts.translate
-    server = None
+
+    def say(f: float, m: str, engine=None) -> None:
+        if progress:
+            progress(f, m, engine.snapshot() if engine is not None else None)
+
+    stats: dict[str, Any] = {}
     try:
-        if t.mode == "external":
-            if not t.base_url:
-                raise ValueError("translate.base_url is required in external mode")
-            base_url, model_name, api_key = t.base_url, t.model_name, t.api_key
-        else:
-            model = Path(t.model_path) if t.model_path else default_llm_path()
-            if model is None:
-                raise FileNotFoundError("no translation model (*.gguf) found in the models folder")
-            if progress:
-                progress(0.0, f"loading {model.name}")
-            server = LlamaServer(model, t, log_path=job.path("llama-server.log"))
-            base_url = server.start(cancel=cancel)
-            model_name, api_key = "local", None
-        tr = OpenAICompatTranslator(base_url, t, model_name, api_key)
-        try:
-            tr.translate(lines, opts.glossary, progress=progress, cancel=cancel, only_ids=only_ids)
-        except TranslationCancelled as e:
-            raise Cancelled() from e
-        finally:
-            tr.close()
-        return dict(tr.stats)
-    finally:
-        if server is not None:
-            server.stop()
+        with open_engine(t, log_path=job.path("llama-server.log"), cancel=cancel,
+                         progress=lambda f, m: say(f, m)) as engine:
+            engine.translate(lines, opts.glossary, progress=lambda f, m: say(f, m, engine), cancel=cancel,
+                             only_ids=only_ids)
+            stats = engine.snapshot()
+            refused = set(engine.refused_ids)
+        if refused and t.mode in CLOUD_MODES and t.refusal == "local":
+            local = local_fallback_options(t)
+            if local is None:
+                say(0.999, f"{len(refused)} refused lines kept for review (no local model)")
+            else:
+                say(0.999, f"{len(refused)} refused lines -> local model")
+                with open_engine(local, log_path=job.path("llama-server.log"), cancel=cancel) as fb:
+                    fb.translate(lines, opts.glossary, cancel=cancel, only_ids=refused)
+                    stats["local_fallback"] = {"lines": len(refused), **fb.snapshot()}
+                for ln in lines:
+                    if ln.id in refused and ln.ko and "local_fallback" not in ln.flags:
+                        ln.flags.append("local_fallback")
+    except TranslationCancelled as e:
+        raise Cancelled() from e
+    return stats
 
 
 def save_options(job: Job, opts: PipelineOptions) -> None:
