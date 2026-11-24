@@ -117,20 +117,28 @@ class Translator(Protocol):
 └─ models/              # *.gguf 번역 모델
 ```
 
-### API 초안
+### API (`jamak serve`)
+
+`127.0.0.1`에만 바인딩합니다. `Host` 헤더가 `127.0.0.1`/`localhost`가 아니면 거부해 DNS 리바인딩을 막습니다. `JAMAK_TOKEN` 환경 변수가 있으면 모든 요청에 `X-Jamak-Token` 헤더(WebSocket은 `?token=`)가 필요합니다. Tauri는 실행할 때마다 임의의 토큰을 만들어 넘깁니다. `--port 0`이면 빈 포트를 골라 `JAMAK_LISTENING http://127.0.0.1:<port>`를 출력하고, `--parent-pid`를 주면 부모 프로세스가 끝날 때 함께 종료합니다.
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `GET` | `/health` | 준비 상태 확인 |
-| `GET` | `/system` | GPU, CUDA, `llama-server` 실행 파일 확인, 사용할 수 있는 GGUF 모델 목록 |
-| `POST` | `/jobs` | `{video_path, options}` → `job_id` |
-| `GET` | `/jobs/{id}` | 단계별 상태 |
-| `WS` | `/jobs/{id}/events` | 진행률 이벤트 |
-| `GET` | `/jobs/{id}/segments` | 원문과 번역 자막 목록 |
-| `PATCH` | `/jobs/{id}/segments` | 사용자가 수정한 내용 저장 |
-| `POST` | `/jobs/{id}/retranslate` | 선택한 줄만 다시 번역 |
-| `POST` | `/jobs/{id}/export` | `{formats, dual, path}`로 자막 파일 저장 |
-| `DELETE` | `/jobs/{id}` | 작업 취소 또는 캐시 삭제 |
+| `GET` | `/health` | 준비 상태 (토큰 없이 허용) |
+| `GET` | `/system` | GPU·VRAM, CUDA, llama-server 빌드, GGUF 목록, STT 모델 목록, 보컬 분리 설치 여부 |
+| `GET` | `/options/default` | 기본 `PipelineOptions` |
+| `POST` | `/media/probe` | `{path}` → 길이, 오디오 트랙 목록, 자동 선택될 트랙 |
+| `POST` | `/jobs` | `{video_path, options?, force_from?}` → 작업 등록 (GPU 하나라 한 번에 하나씩 처리) |
+| `GET` | `/jobs` | 작업 목록 (캐시 폴더 + 실행 중 상태) |
+| `GET` | `/jobs/{key}` | 단계별 정보, 옵션, 실행 상태와 최근 이벤트 |
+| `WS` | `/jobs/{key}/events` | 진행률·상태 이벤트 스트림 |
+| `POST` | `/jobs/{key}/cancel` | 취소 |
+| `DELETE` | `/jobs/{key}?purge=true` | 취소, `purge`면 캐시 폴더 삭제 |
+| `GET` | `/jobs/{key}/segments` | 자막 줄 목록 + 환각 필터가 걸러낸 구간 |
+| `PATCH` | `/jobs/{key}/segments` | `{edits:[{id, ko?, ja?, start?, end?, locked?}]}`. 번역을 고치면 잠금(재번역 시 보존) |
+| `POST` | `/jobs/{key}/retranslate` | `{ids}` 고른 줄만 다시 번역 (명시적 요청이라 잠금 해제) |
+| `POST` | `/jobs/{key}/export` | `{output?}` 자막 파일 저장 |
+| `POST` | `/fs/reveal` | 탐색기에서 파일 위치 열기 |
+| `GET/PUT/DELETE` | `/glossaries[/{name}]` | 작품별 용어집 저장 |
 
 ## 4. 애니·드라마에 맞춘 설계 포인트
 

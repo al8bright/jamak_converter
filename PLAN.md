@@ -82,16 +82,18 @@
 
 ## Phase 3 — API 서버
 
-- [ ] `api/`: FastAPI 앱, `127.0.0.1`에만 바인딩, 포트는 인자로 받음
-- [ ] 작업 큐: GPU 하나 기준으로 한 번에 하나씩 처리, 작업 취소 지원
-- [ ] 엔드포인트: `/health`, `/system`, `/jobs`(생성·조회·삭제), `/jobs/{id}/segments`(조회·수정), `/retranslate`, `/export`
-- [ ] WebSocket `/jobs/{id}/events`: 단계, 진행 비율, 로그, 남은 시간 추정
-- [ ] 사용자가 수정한 자막을 `segments.ko.json`에 저장. 같은 줄을 다시 번역해도 수정한 내용은 덮어쓰지 않음(잠금 플래그)
-- [ ] `/system`: CUDA 사용 여부, VRAM, `llama-server` 실행 파일 확인, `models/`의 GGUF 목록
-- [ ] 설정: 번역 서버 모드 선택(내장 llama-server / 외부 OpenAI 호환 서버 주소)
-- [ ] API 테스트 (STT와 LLM은 가짜 엔진으로 대체)
+- [x] `api/`: FastAPI 앱, `127.0.0.1`에만 바인딩, 포트는 인자로 받음
+- [x] 작업 큐: GPU 하나 기준으로 한 번에 하나씩 처리, 작업 취소 지원
+- [x] 엔드포인트: `/health`, `/system`, `/jobs`(생성·조회·삭제), `/jobs/{id}/segments`(조회·수정), `/retranslate`, `/export`
+- [x] WebSocket `/jobs/{id}/events`: 단계, 진행 비율, 로그, 남은 시간 추정
+- [x] 사용자가 수정한 자막을 `segments.ko.json`에 저장. 같은 줄을 다시 번역해도 수정한 내용은 덮어쓰지 않음(잠금 플래그)
+- [x] `/system`: CUDA 사용 여부, VRAM, `llama-server` 실행 파일 확인, `models/`의 GGUF 목록
+- [x] 설정: 번역 서버 모드 선택(내장 llama-server / 외부 OpenAI 호환 서버 주소) → `PipelineOptions.translate.mode`로 작업마다 지정
+- [x] API 테스트 (STT와 LLM은 가짜 엔진으로 대체)
 
 **완료 기준**: HTTP만으로 작업을 만들고, 진행률을 받고, 내보내기까지 할 수 있으며 결과가 CLI와 같음.
+
+> 결과 (2026-11-24): API 테스트 6개(가짜 파이프라인)와 실제 서버로 GPU 작업 1건 통과(`jamak serve --port 0` → 등록 → 진행률 → 자막 조회 → 내보내기, STT 7.0s·번역 9.3s로 CLI와 같은 결과). 보안: 루프백 전용, Host 헤더 검사, 선택적 토큰. 작업 폴더 `meta.json`을 여러 스레드가 동시에 쓰다 Windows에서 충돌하는 문제를 발견해, 경로별 잠금 + 매번 다시 읽고 고쳐 쓰는 방식으로 수정.
 
 ## Phase 4 — 웹 UI + Tauri
 

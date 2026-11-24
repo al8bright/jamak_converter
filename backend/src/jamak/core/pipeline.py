@@ -135,8 +135,7 @@ class Pipeline:
         def _export() -> None:
             lines = self.load_lines()
             result.outputs = subtitle.export(lines.lines, self.video, self.opts.output)
-            self.job.meta["last_export"] = [str(p) for p in result.outputs]
-            self.job.save_meta()
+            self.job.update_meta(last_export=[str(p) for p in result.outputs])
 
         stage("export", [], _export)
         return result
@@ -147,8 +146,7 @@ class Pipeline:
         track = audio_mod.pick_track(info, self.opts.audio.track)
         self.emit("audio", "progress", 0.2, f"track {track.index} ({track.language or 'und'}, {track.codec})")
         audio_mod.extract_wav(self.video, self.job.path("audio.wav"), track)
-        self.job.meta["duration"] = info.duration
-        self.job.meta["tracks"] = [t.__dict__ for t in info.tracks]
+        self.job.update_meta(duration=info.duration, tracks=[t.__dict__ for t in info.tracks])
         return {"track": track.index, "language": track.language}
 
     def _separate(self) -> None:
