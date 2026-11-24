@@ -217,7 +217,7 @@ def list_job_dirs() -> list[dict[str, Any]]:
             try:
                 t = json.loads((d / "options.json").read_text(encoding="utf-8")).get("translate", {})
                 engine = {"kind": t.get("mode"), "profile_name": t.get("profile_name"),
-                          "cloud": t.get("mode") in ("anthropic", "gemini")}
+                          "cloud": t.get("mode") not in ("managed", "external", None)}
             except (OSError, json.JSONDecodeError):
                 engine = None
         out.append({

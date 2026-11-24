@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Any
 
 from jamak.config import PipelineOptions, TranslateOptions, default_llm_path
+from jamak.core import providers
 from jamak.core.store import ENV_KEYS, Profile, Store, store
 from jamak.core.translate.base import BatchTranslator, EngineError
 
-KIND_TO_MODE = {"local_managed": "managed", "local_external": "external", "anthropic": "anthropic",
-                "gemini": "gemini"}
-CLOUD_MODES = ("anthropic", "gemini")
-PROVIDER_NAME = {"anthropic": "Anthropic", "gemini": "Google"}
+KIND_TO_MODE = {"local_managed": "managed", "local_external": "external", **{k: k for k in providers.CLOUD_KINDS}}
+CLOUD_MODES = providers.CLOUD_KINDS
+PROVIDER_NAME = {p.id: p.name for p in providers.PROVIDERS}
 
 
 def apply_profile(t: TranslateOptions, p: Profile) -> TranslateOptions:
@@ -32,6 +32,7 @@ def apply_profile(t: TranslateOptions, p: Profile) -> TranslateOptions:
         model_path=None, base_url=None, model_name="local", api_model=None, api_key_id=p.api_key_id,
         batch_size=o.batch_size, context_lines=o.context_lines, gpu_layers=o.gpu_layers,
         parallel=o.parallel or (4 if p.cloud else 1), effort=o.effort, refusal=o.refusal,
+        fallback_profile_id=o.fallback_profile_id,
     )
     if o.temperature is not None:
         data["temperature"] = o.temperature
@@ -42,6 +43,9 @@ def apply_profile(t: TranslateOptions, p: Profile) -> TranslateOptions:
         data["model_name"] = p.model or "local"
     else:
         data["api_model"] = p.model
+        info = providers.get(p.kind)
+        if info is not None and info.base_url:
+            data["base_url"] = info.base_url
     return TranslateOptions.model_validate(data)
 
 
@@ -87,6 +91,9 @@ def model_label(t: TranslateOptions) -> str:
         return mp.name if mp else "(no GGUF model)"
     if t.mode == "external":
         return f"{t.model_name} @ {t.base_url}"
+    info = providers.get(t.mode)
+    if info is not None and not info.llm:
+        return info.name
     return t.api_model or "?"
 
 
@@ -121,16 +128,29 @@ def open_engine(t: TranslateOptions, log_path: Path | None = None, cancel: threa
             key = resolve_secret(t, db)
             if not key:
                 raise EngineError(f"{PROVIDER_NAME[t.mode]} API 키가 없습니다. 설정 › 번역 엔진에서 키를 추가하세요")
-            if not t.api_model:
+            info = providers.BY_ID[t.mode]
+            if info.llm and not t.api_model:
                 raise EngineError("이 프로필에 모델 ID가 없습니다")
-            if t.mode == "anthropic":
+            if info.family == "anthropic":
                 from jamak.core.translate.anthropic_api import AnthropicTranslator
 
                 engine = AnthropicTranslator(t, key, t.api_model)
-            else:
+            elif info.family == "gemini":
                 from jamak.core.translate.gemini_api import GeminiTranslator
 
                 engine = GeminiTranslator(t, key, t.api_model)
+            elif info.family == "openai":
+                from jamak.core.translate.openai_compat import OpenAICompatTranslator
+
+                engine = OpenAICompatTranslator(info.base_url or "", t, t.api_model or "", key, provider=info)
+            elif info.family == "deepl":
+                from jamak.core.translate.mt_api import DeepLTranslator
+
+                engine = DeepLTranslator(t, key)
+            else:
+                from jamak.core.translate.mt_api import PapagoTranslator
+
+                engine = PapagoTranslator(t, key)
             del key
         try:
             yield engine

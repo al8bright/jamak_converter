@@ -22,6 +22,9 @@ try {
     if ($LASTEXITCODE) { throw "PyInstaller failed" }
     & .\dist\jamak-backend\jamak-backend.exe --help | Out-Null
     if ($LASTEXITCODE) { throw "the packaged backend does not start" }
+    foreach ($f in "qwen_asr_worker.py", "qwen-requirements.lock") {
+        if (-not (Test-Path ".\dist\jamak-backend\_internal\jamak\runtime\$f")) { throw "runtime/$f is missing from the bundle" }
+    }
 } finally { Pop-Location }
 
 Push-Location (Join-Path $root "app")

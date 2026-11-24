@@ -25,9 +25,21 @@ class SpeechRecognizer(Protocol):
         ...
 
 
+def engine_for(opts: SttOptions) -> str:
+    from jamak import models
+
+    s = models.spec(opts.model)
+    return s.engine if s and s.engine else "faster-whisper"  # unknown names: a CTranslate2 model folder
+
+
 def create_recognizer(opts: SttOptions) -> SpeechRecognizer:
-    if opts.engine == "faster-whisper":
+    engine = engine_for(opts)
+    if engine == "faster-whisper":
         from jamak.core.stt.faster_whisper import FasterWhisperRecognizer
 
         return FasterWhisperRecognizer(opts)
-    raise ValueError(f"unknown STT engine: {opts.engine}")
+    if engine == "qwen-asr":
+        from jamak.core.stt.qwen_asr import QwenAsrRecognizer
+
+        return QwenAsrRecognizer(opts)
+    raise ValueError(f"unknown STT engine: {engine}")

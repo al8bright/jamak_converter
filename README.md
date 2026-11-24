@@ -2,7 +2,7 @@
 
 일본어 영상(애니메이션·드라마)을 선택하면 **한국어 자막 파일**을 만들어 주는 데스크톱 프로그램입니다.
 **기본은 전부 로컬, 클라우드 번역은 선택**입니다. 음성 인식과 번역을 이 PC의 GPU에서 처리하므로 기본 설정에서는 API 비용이 없고 아무것도 외부로 나가지 않습니다.
-번역만 Claude나 Gemini로 바꿀 수 있습니다. 이때도 나가는 것은 **일본어 대사 텍스트뿐**이고, 영상과 음성은 이 PC를 떠나지 않습니다.
+번역만 Claude, Gemini, OpenAI, DeepL, Papago 같은 클라우드 서비스로 바꿀 수 있습니다. 이때도 나가는 것은 **일본어 대사 텍스트뿐**이고, 영상과 음성은 이 PC를 떠나지 않습니다.
 
 > 상태: Phase 0~5 완료(번역 엔진 선택 포함), 실제 영상 검증(Phase 6)만 남음 · 개발 계획은 [PLAN.md](PLAN.md)를 참고하세요.
 
@@ -19,7 +19,7 @@
 | 대상 콘텐츠 | 일본어 애니메이션·드라마 (배경음악·효과음이 많고, 고유명사와 말투가 중요함) |
 | 처리 방식 | 실시간이 아닌 **파일 단위 일괄 처리** (전체 문맥을 활용해 정확도 우선) |
 | 음성 인식 | **로컬** (faster-whisper) |
-| 번역 | 기본은 **로컬** (llama.cpp `llama-server`). 번역 프로필로 외부 OpenAI 호환 서버, **Claude**, **Gemini**를 고를 수 있음 |
+| 번역 | **로컬** (llama.cpp `llama-server`, 받기는 선택) 또는 번역 프로필로 외부 OpenAI 호환 서버, 클라우드 9곳(Claude, Gemini, OpenAI, DeepSeek, xAI, Mistral, OpenRouter, DeepL, Papago) |
 | GUI | Python 로컬 서버 + 웹 UI, **Tauri로 감싼 데스크톱 앱** |
 | 결과물 | **자막 파일만** 생성 (SRT / ASS / VTT). 재생은 별도 플레이어에서 함 |
 
@@ -38,7 +38,7 @@ Video ─▶ ① FFmpeg ─▶ ② Demucs ─▶ ③ Silero VAD ─▶ ④ faste
 | ① | 오디오 추출 | FFmpeg | `audio.wav` | 16kHz 모노 PCM. 여러 오디오 트랙이 있으면 일본어 트랙을 고름 |
 | ② | 보컬 분리 | Demucs (htdemucs) | `vocals.wav` | 배경음악 때문에 인식이 틀리거나 환각이 생기는 것을 줄임. 옵션이며 기본값은 켬 |
 | ③ | 발화 감지 | Silero VAD (faster-whisper 내장) | — | ④ 안에서 함께 실행. 무음·음악 구간을 잘라내 Whisper 환각을 막음 |
-| ④ | 음성 인식 | faster-whisper `large-v3` (CUDA fp16) | `transcript.json` | 단어 단위 타임스탬프 포함. `kotoba-whisper-v2.0`은 비교 후보 |
+| ④ | 음성 인식 | faster-whisper `large-v3` (CUDA fp16), 또는 `large-v3-turbo` · `kotoba-whisper-v2.0` · **Qwen3-ASR 1.7B** | `transcript.json` | 단어 단위 타임스탬프 포함. Qwen은 별도 PyTorch 환경의 작업 프로세스에서 돌고, 단어 시간은 Qwen3-ForcedAligner로 계산 |
 | ⑤ | 자막 단위 분할 | 자체 구현 | `segments.ja.json` | 길이·글자 수·쉼 기준으로 다시 나누고 합침 |
 | ⑥ | 번역 | llama.cpp `llama-server` (로컬 LLM, GGUF) | `segments.ko.json` | 묶음 단위 번역 + 앞뒤 문맥 + 용어집. 출력은 JSON 스키마로 강제 |
 | ⑦ | 자막 쓰기 | pysubs2 | `*.ko.srt` 등 | 영상 파일 옆에 저장 |
@@ -128,10 +128,16 @@ class Translator(Protocol):
 | `local_external` | OpenAI 호환 서버 | Ollama, LM Studio, 다른 PC |
 | `anthropic` | Claude (`anthropic` SDK) | Opus 5.5 / Sonnet 5.5 / Haiku 5.5. 구조화 출력으로 `[{id, ko}]`를 받고, 시스템 프롬프트와 용어집에 프롬프트 캐싱 적용. Opus·Sonnet 5.5는 서버 측 거절 대체 경로(`fallbacks: "default"`)를 켭니다 |
 | `gemini` | Gemini (`google-genai` SDK) | JSON 스키마 응답. 모델 목록은 키로 API에서 가져옴 |
+| `openai` · `deepseek` · `xai` · `mistral` · `openrouter` | OpenAI 호환 (`openai_compat.py`) | 주소는 미리 넣어 둠. 모델 목록은 각 서비스의 `/models`에서 가져옴. DeepSeek는 JSON 스키마 대신 `json_object` |
+| `deepl` · `papago` | 번역 전용 API (`mt_api.py`) | 줄 단위 번역, 모델·말투 지시 없음. 용어집 단어는 번역 전에 한국어로 바꿔 넣음(DeepL은 `<keep>` 태그로 보존). 사용량은 글자 수. Papago 키는 Client ID + Secret |
+
+서비스 목록은 `core/providers.py` 한곳에 있습니다(이름, 주소, 키 발급·요금 페이지, 키 형식, 요청 차이). 가격은 자주 바뀌어 코드에 넣지 않고, 키 화면에서 각 서비스의 요금 페이지를 엽니다.
 
 - 엔진과 상관없이 프롬프트, 응답 검증(id·줄 수 일치), 실패 시 묶음을 줄여 재시도하는 부분은 공통 모듈(`translate/base.py`)이 처리합니다.
 - 클라우드는 묶음을 동시에 보내고(기본 4), 429·5xx는 SDK가 재시도하며, 인증 오류는 바로 멈추고 "키 확인"을 알립니다. 사용 토큰과 예상 비용은 진행 화면과 `meta.json`에 남습니다.
 - 서비스가 번역을 거절한 줄은 "거절됨"으로 표시하고, 프로필 설정에 따라 로컬 모델로 다시 번역하거나(기본) 검수 화면에 표시만 합니다.
+- 클라우드 프로필에 "이 서비스가 실패하면" 대신 쓸 다른 클라우드 프로필을 지정할 수 있습니다. 한도 초과·인증 오류로 멈추거나 번역에 실패한 줄을 그 프로필로 마저 번역하고 `cloud_fallback`으로 표시합니다.
+- 로컬 번역을 받지 않았으면 로컬 프로필은 "준비 안 됨"이 되고, 처음 만든 클라우드 프로필이 기본이 됩니다.
 - ⑥ 단계 캐시 해시에는 `종류 + 모델 + 프롬프트 버전 + 번역 옵션`이 들어가고 **API 키는 들어가지 않습니다.** 엔진을 바꾸면 ⑥과 ⑦만 다시 돕니다.
 
 ### 설정 저장 (`jamak.db`)과 키 보호
@@ -170,12 +176,18 @@ class Translator(Protocol):
 | `POST` | `/jobs/{key}/retranslate` | `{ids, profile_id?}` 고른 줄만 다시 번역. 다른 프로필로도 가능 (명시적 요청이라 잠금 해제) |
 | `POST` | `/jobs/{key}/export` | `{output?}` 자막 파일 저장 |
 | `POST` | `/fs/reveal` | 탐색기에서 파일 위치 열기 |
-| `GET/PUT/DELETE` | `/glossaries[/{name}]` | 작품별 용어집 저장 |
+| `GET/PUT/DELETE` | `/glossaries[/{name}]` | 작품별 용어집 (별칭, 인식 힌트 표시 포함). `POST /glossaries/import`, `/{name}/export`·`rename`·`duplicate`·`entries`, `GET /glossaries/suggest?filename=` |
+| `GET/POST` | `/jobs/{key}/glossary[/attach\|/refresh]` | 작업에 쓴 용어집과 바뀌었는지, 용어집 붙이기, 바뀐 용어집으로 다시 번역 |
+| `GET` | `/setup?sizes=` | 받을 수 있는 항목(도구, 실행 환경, 음성 인식 모델, 번역 모델)과 상태, 필요한 항목, 추천 모델, 남은 디스크 |
+| `POST` | `/setup/install`, `/setup/remove`, `/setup/cancel` | `{ids}` 받기(필요한 실행 환경을 함께 받음), `{id}` 지우기(다른 모델이 쓰는 항목·마지막 음성 인식 모델은 막음), 멈추기 |
 | `GET/POST/DELETE` | `/settings/api-keys[/{id}]` | API 키. 목록에는 `id, provider, label, last4`만. 키 원문은 어떤 응답에도 없음 |
 | `GET/POST/PUT/DELETE` | `/settings/translation-profiles[/{id}]` | 번역 프로필 (상태·기본 여부 포함) |
 | `POST` | `/settings/translation-profiles/{id}/test` | 짧은 문장 하나를 번역해 키·모델·응답 형식 확인 |
 | `PUT` | `/settings/default-profile` | `{profile_id}` 기본 프로필 지정 |
-| `GET` | `/settings/models?kind=&key_id=` | 고를 수 있는 모델 목록 (Gemini는 키로 조회) |
+| `GET` | `/settings/models?kind=&key_id=` | 고를 수 있는 모델 목록 (Claude 외에는 키로 각 서비스에 조회) |
+| `GET` | `/settings/providers` | 클라우드 서비스 목록 (`core/providers.py`) |
+| `POST` | `/settings/api-keys/{id}/check` | 키 확인(모델 목록 조회, DeepL은 이번 달 사용량). 오류 메시지에서도 키는 가림 |
+| `POST` | `/system/open-url` | 서비스의 키 발급·요금 페이지를 브라우저로 열기 (목록에 있는 주소만) |
 | `GET/PUT` | `/settings/ui` | 색 테마, 사이드바 접힘, 클라우드 안내 확인 여부 |
 
 ## 4. 애니·드라마에 맞춘 설계 포인트
@@ -242,7 +254,16 @@ powershell -ExecutionPolicy Bypass -File scripts\build_app.ps1
 # → app\src-tauri\target\release\bundle\nsis\jamak_0.1.0_x64-setup.exe (약 80MB)
 ```
 
-설치한 앱을 처음 열면 필요한 파일 내려받기 화면이 나옵니다. FFmpeg, CUDA 라이브러리, llama-server, Whisper, 번역 모델을 합쳐 약 12GB이며 `%LOCALAPPDATA%\jamak_converter\`에 저장합니다. 이미 있는 항목은 건너뜁니다.
+설치한 앱을 처음 열면 내려받기 화면이 나옵니다. 꼭 필요한 것은 FFmpeg와 음성 인식 모델 하나뿐입니다(그래픽카드 메모리에 맞춰 하나를 미리 고름. large-v3면 CUDA 포함 약 4.4GB). 로컬 번역(llama-server + Gemma 4 12B, 약 7.7GB)은 선택이고, 받지 않으면 클라우드 번역 키를 등록하도록 안내합니다. 나머지는 **설정 › 모델 관리**에서 언제든 받거나 지웁니다. 모두 `%LOCALAPPDATA%\jamak_converter\`에 저장합니다.
+
+| 항목 | 받는 크기 | 언제 |
+|---|---|---|
+| FFmpeg | 0.08GB | 항상 |
+| CUDA 라이브러리 | 1.25GB | Whisper 계열을 GPU로 쓸 때 |
+| Whisper large-v3 / large-v3-turbo / kotoba-whisper-v2.0 | 3.1 / 1.6 / 1.5GB | 고른 모델만 |
+| Qwen3-ASR 1.7B + ForcedAligner | 6.2GB | Qwen을 고를 때 |
+| PyTorch 실행 환경 | 약 2.7GB (설치 후 4.5GB) | Qwen을 고르면 같이 받음. uv로 Python 3.12 환경을 만들고 해시가 고정된 목록(`runtime/qwen-requirements.lock`)으로 설치 |
+| llama-server + Gemma 4 12B | 0.7 + 7.0GB | 로컬 번역을 쓸 때 |
 
 ### 실행
 
@@ -267,7 +288,7 @@ pnpm tauri dev
 pnpm dev                                             # http://localhost:5173 (영상 경로는 직접 입력)
 ```
 
-번역 모델은 `%LOCALAPPDATA%\jamak_converter\models\`에 GGUF 파일을 두면 됩니다. 잠정 기본값은 Google 공식 [`gemma-4-12b-it-qat-q4_0.gguf`](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)(7GB, Apache 2.0)입니다. Whisper 모델(약 3GB)은 처음 실행할 때 자동으로 내려받습니다.
+번역 모델은 `%LOCALAPPDATA%\jamak_converter\models\`에 GGUF 파일을 두면 됩니다. 잠정 기본값은 Google 공식 [`gemma-4-12b-it-qat-q4_0.gguf`](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf)(7GB, Apache 2.0)입니다. 음성 인식 모델은 작업 중에 몰래 받지 않습니다. 받지 않은 모델로 작업을 만들면 409와 함께 "모델 관리에서 받으세요"를 돌려줍니다.
 
 #### CLI 주요 옵션
 
@@ -278,7 +299,7 @@ pnpm dev                                             # http://localhost:5173 (�
 | `--ja` / `--dual` | 일본어 자막도 저장 / 일본어+한국어 이중 ASS 저장 |
 | `--separate` | Demucs 보컬 분리 사용 (`--extra separation` 설치 필요) |
 | `--song 0:00-1:30` | 오프닝·엔딩 노래 구간 (여러 번 지정 가능). `--song-mode skip`이면 그 구간 대사를 버리고, 기본(`translate`)은 ♪ 표시와 함께 번역 |
-| `--stt-model 이름` | `large-v3`(기본) / `large-v3-turbo` / `kotoba-whisper-v2.0` |
+| `--stt-model 이름` | `large-v3`(기본) / `large-v3-turbo` / `kotoba-whisper-v2.0` / `qwen3-asr-1.7b` (받아 둔 모델만) |
 | `--parallel N` | 번역 묶음 N개 동시 처리 |
 | `--llm-model 경로` | 다른 GGUF 사용 |
 | `--llm-url URL` | 외부 OpenAI 호환 서버 사용 (예: Ollama `http://127.0.0.1:11434/v1`) |
@@ -319,17 +340,21 @@ jamak_converter/
 │  │  │  ├─ separate.py     # Demucs
 │  │  │  ├─ filters.py      # Whisper 환각 필터
 │  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object)
-│  │  │  ├─ stt/            # base.py, faster_whisper.py (kotoba는 모델 이름으로 선택)
+│  │  │  ├─ stt/            # base.py, faster_whisper.py, qwen_asr.py (작업 프로세스를 띄우는 쪽)
+│  │  │  ├─ glossary.py     # 용어집 파일 (v2: 별칭, 인식 힌트), 가져오기·내보내기, 합치기
+│  │  │  ├─ providers.py    # 클라우드 번역 서비스 목록
 │  │  │  ├─ segmenter.py
 │  │  │  ├─ translate/      # base.py(공통 묶음 번역), openai_compat.py, llama_server.py,
-│  │  │  │                  # anthropic_api.py, gemini_api.py, factory.py(프로필 → 엔진), prompts.py
+│  │  │  │                  # anthropic_api.py, gemini_api.py, mt_api.py(DeepL·Papago), factory.py, prompts.py
 │  │  │  ├─ store.py        # 설정 DB (jamak.db, SQLite)
 │  │  │  ├─ secrets.py      # API 키 암호화 (Windows DPAPI)
 │  │  │  ├─ subtitle.py     # SRT/ASS/VTT 쓰기
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
 │  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐), checks.py (시스템 점검·사용량)
-│  │  ├─ installer.py       # 처음 실행 때 내려받기 (FFmpeg, CUDA DLL, llama-server, 모델)
+│  │  ├─ models.py          # 받을 수 있는 항목 목록 (크기, VRAM, 필요한 실행 환경)
+│  │  ├─ installer.py       # 받기·지우기 (FFmpeg, CUDA DLL, PyTorch 환경, llama-server, 모델)
+│  │  ├─ runtime/           # qwen_asr_worker.py, qwen-requirements.lock (PyTorch 환경에서 실행)
 │  │  └─ cli.py
 │  ├─ packaging/          # PyInstaller spec, 진입점
 │  └─ tests/

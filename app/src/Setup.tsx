@@ -1,129 +1,132 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "./ctx";
+import { gb, isReady, type SetupComponent, toDownload, useSetup } from "./setupState";
 import { Note, Page } from "./ui";
 
-export interface SetupComponent {
-  id: string;
-  name: string;
-  note: string;
-  approx_bytes: number;
-  status: "present" | "missing" | "queued" | "running" | "done" | "error" | "cancelled";
-  done_bytes: number;
-  total_bytes: number;
-  message: string;
-  error: string | null;
+export function ComponentState({ c }: { c: SetupComponent }) {
+  const total = c.total_bytes || c.approx_bytes;
+  if (isReady(c)) return <span className="badge ok">준비됨</span>;
+  if (c.status === "running") {
+    return (
+      <>
+        <span className="bar" aria-hidden><span style={{ width: `${total ? (c.done_bytes / total) * 100 : 0}%` }} /></span>
+        <span className="small muted" role="status">{gb(c.done_bytes)} / {gb(total)}</span>
+      </>
+    );
+  }
+  if (c.status === "queued") return <span className="muted">대기 중</span>;
+  if (c.status === "error") return <span className="err-fg small" title={c.error ?? ""}>실패: {c.error}</span>;
+  if (c.status === "cancelled") return <span className="muted">멈춤</span>;
+  return <span className="muted">{gb(total)}</span>;
 }
 
-export interface SetupStatus {
-  running: boolean;
-  components: SetupComponent[];
-}
-
-export function setupNeeded(s: SetupStatus | null): boolean {
-  return !!s && (s.running || s.components.some((c) => c.status !== "present" && c.status !== "done"));
-}
-
-function gb(bytes: number): string {
-  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)}GB` : `${Math.max(1, Math.round(bytes / 1e6))}MB`;
-}
-
-export function Setup({ onDone }: { onDone: () => void }) {
+export function Setup({ onDone }: { onDone: (next?: "engine") => void }) {
   const { sys } = useApp();
   const home = sys?.home ?? "jamak 폴더";
-  const [status, setStatus] = useState<SetupStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { status, error, install, cancel } = useSetup();
+  const [stt, setStt] = useState<string | null>(null);
+  const [local, setLocal] = useState(false);
 
-  const poll = useCallback(async () => {
-    try {
-      setStatus(await api.get<SetupStatus>("/setup"));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
-
+  const sttModels = useMemo(() => status?.components.filter((c) => c.kind === "stt") ?? [], [status]);
   useEffect(() => {
-    poll();
-  }, [poll]);
+    if (!status || stt) return;
+    setStt(status.ready.stt[0] ?? status.recommended_stt);
+    setLocal(status.ready.local_translation);
+  }, [status, stt]);
 
-  useEffect(() => {
-    if (!status?.running) return;
-    const t = setInterval(poll, 700);
-    return () => clearInterval(t);
-  }, [status?.running, poll]);
+  if (!status || !stt) return <Page eyebrow="SETUP" title="설치 확인"><p className="muted">확인하는 중…</p></Page>;
 
-  if (!status) return <Page eyebrow="SETUP" title="설치 확인"><p className="muted">확인하는 중…</p></Page>;
-
-  const missing = status.components.filter((c) => c.status !== "present" && c.status !== "done");
-  const remaining = missing.reduce((a, c) => a + (c.total_bytes || c.approx_bytes) - c.done_bytes, 0);
-  const allDone = missing.length === 0;
-
-  async function start() {
-    setError(null);
-    try {
-      await api.post("/setup/install", {});
-      poll();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
+  const ids = ["ffmpeg", stt, ...(local ? ["llm"] : [])];
+  const todo = toDownload(status, ids);
+  const remaining = todo.reduce((a, c) => a + Math.max(0, (c.total_bytes || c.approx_bytes) - c.done_bytes), 0);
+  const shown = status.running ? status.components.filter((c) => !["present", "missing"].includes(c.status)) : todo;
+  const allDone = status.ready.ok && !status.running && todo.length === 0;
+  const lowDisk = remaining > status.free_bytes * 0.95;
+  const stopped = shown.some((c) => c.status === "error" || c.status === "cancelled");
 
   return (
     <Page eyebrow="SETUP · 처음 한 번" title={allDone ? "준비가 끝났습니다" : "필요한 파일을 내려받습니다"}>
       <p className="muted" style={{ margin: 0, maxWidth: 720 }}>
         {allDone
-          ? "이제 영상을 넣어 자막을 만들 수 있습니다."
-          : `음성 인식과 번역은 모두 이 PC에서 처리하므로 엔진과 모델 파일이 필요합니다. 남은 용량은 약 ${gb(remaining)}이며 ${home}에 저장합니다. 중간에 끊겨도 받은 부분부터 이어서 받습니다.`}
+          ? status.ready.local_translation
+            ? "이제 영상을 넣어 자막을 만들 수 있습니다."
+            : "음성 인식은 준비됐습니다. 번역은 클라우드 API 키를 등록하면 바로 쓸 수 있습니다."
+          : `음성 인식은 이 PC에서 처리합니다. 고른 항목만 ${home}에 받으며, 나중에 설정 › 모델 관리에서 더 받거나 지울 수 있습니다. 중간에 끊겨도 받은 부분부터 이어서 받습니다.`}
       </p>
 
       {error && <Note tone="err">{error}</Note>}
 
-      <ul className="setup-list">
-        {status.components.map((c) => {
-          const total = c.total_bytes || c.approx_bytes;
-          const ready = c.status === "present" || c.status === "done";
-          const p = ready ? 1 : total ? c.done_bytes / total : 0;
-          return (
+      {!status.running && !allDone && (
+        <>
+          <fieldset className="card" style={{ margin: 0 }}>
+            <legend><b>음성 인식 모델</b> <span className="small muted">한 개만 있으면 됩니다{status.vram_gb ? ` · 이 PC의 GPU 메모리 ${status.vram_gb}GB` : " · NVIDIA GPU를 찾지 못했습니다"}</span></legend>
+            <div className="stack" style={{ gap: 6 }}>
+              {sttModels.map((c) => (
+                <label key={c.id} className="check">
+                  <input type="radio" name="stt" checked={stt === c.id} onChange={() => setStt(c.id)} />
+                  <span className="check-text">
+                    <b>
+                      {c.name}
+                      {c.id === status.recommended_stt && <span className="badge ok" style={{ marginLeft: 6 }}>이 PC에 추천</span>}
+                      {isReady(c) && <span className="badge" style={{ marginLeft: 6 }}>받아 둠</span>}
+                    </b>
+                    <span>{c.summary} · {gb(c.approx_bytes)}{c.vram_gb ? ` · GPU 메모리 약 ${c.vram_gb}GB` : ""}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="card" style={{ margin: 0 }}>
+          <label className="check">
+            <input type="checkbox" checked={local} onChange={(e) => setLocal(e.target.checked)} />
+            <span className="check-text">
+              <b>로컬 번역도 받기 (선택)</b>
+              <span>
+                Gemma 4 12B와 llama-server, 약 {gb(7_680_000_000)}. 인터넷 없이 번역하며 GPU 메모리 9GB 이상이 필요합니다.
+                받지 않으면 Claude, Gemini 같은 클라우드 번역을 씁니다.
+              </span>
+            </span>
+          </label>
+          </div>
+        </>
+      )}
+
+      {shown.length > 0 && (
+        <ul className="setup-list" aria-label="받을 항목">
+          {shown.map((c) => (
             <li key={c.id} className={c.status}>
               <div className="setup-name">
                 <b style={{ fontWeight: 500 }}>{c.name}</b>
                 <small className="muted">{c.note}</small>
               </div>
-              <div className="setup-state">
-                {ready ? (
-                  <span className="badge ok">준비됨</span>
-                ) : c.status === "running" ? (
-                  <>
-                    <span className="bar"><span style={{ width: `${p * 100}%` }} /></span>
-                    <span className="small muted">{gb(c.done_bytes)} / {gb(total)}</span>
-                  </>
-                ) : c.status === "queued" ? (
-                  <span className="muted">대기 중</span>
-                ) : c.status === "error" ? (
-                  <span className="err-fg small" title={c.error ?? ""}>실패: {c.error}</span>
-                ) : c.status === "cancelled" ? (
-                  <span className="muted">멈춤</span>
-                ) : (
-                  <span className="muted">{gb(total)}</span>
-                )}
-              </div>
+              <div className="setup-state"><ComponentState c={c} /></div>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
+
+      {!allDone && !status.running && (
+        <p className={`small ${lowDisk ? "err-fg" : "muted"}`} style={{ margin: 0 }}>
+          받을 용량 약 {gb(remaining)} · 남은 디스크 {gb(status.free_bytes)}
+          {lowDisk && " — 디스크 공간이 모자랍니다. 공간을 비우거나 더 작은 모델을 고르세요."}
+        </p>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
         {allDone ? (
-          <button className="btn primary lg" onClick={onDone}>자막 만들기로 가기</button>
+          <>
+            {!status.ready.local_translation && <button className="btn primary lg" onClick={() => onDone("engine")}>API 키 등록하기</button>}
+            <button className={`btn lg${status.ready.local_translation ? " primary" : ""}`} onClick={() => onDone()}>자막 만들기로 가기</button>
+          </>
         ) : status.running ? (
-          <button className="btn lg" onClick={() => api.post("/setup/cancel").then(poll)}>멈추기</button>
+          <button className="btn lg" onClick={cancel}>멈추기</button>
         ) : (
-          <button className="btn primary lg" onClick={start}>
-            {missing.some((c) => c.status === "error" || c.status === "cancelled") ? "이어서 내려받기" : "내려받기 시작"}
+          <button className="btn primary lg" onClick={() => install(ids)} disabled={lowDisk}>
+            {stopped ? "이어서 내려받기" : "내려받기 시작"}
           </button>
         )}
         {!allDone && !status.running && (
-          <p className="muted small">FFmpeg, CUDA 라이브러리, llama.cpp는 각 배포처의 공식 파일을 받아 SHA-256으로 확인합니다.</p>
+          <p className="muted small">모든 파일은 각 배포처의 공식 파일을 받아 크기와 해시로 확인합니다.</p>
         )}
       </div>
     </Page>

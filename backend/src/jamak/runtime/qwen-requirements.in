@@ -1,0 +1,8 @@
+# PyTorch runtime for Qwen3-ASR (installed by the app into its own folder; not part of the backend exe)
+torch==2.14.1+cu126
+transformers==4.57.6
+accelerate==1.12.0
+librosa==1.0.1
+soundfile==0.14.0
+nagisa==0.2.11
+numpy==2.5.5

@@ -43,6 +43,7 @@ def translator(fake: FakeServer, **opt) -> OpenAICompatTranslator:
 def test_fills_every_line_in_batches_with_context():
     fake = FakeServer()
     lines = make_lines(7)
+    lines[4].ja = "ユウキ、行こう"  # in the second batch only
     translator(fake, batch_size=3, context_lines=2).translate(lines, [GlossaryEntry(ja="ユウキ", ko="유키")])
     assert [ln.ko for ln in lines] == [f"ko{i}" for i in range(1, 8)]
     assert len(fake.calls) == 3
@@ -51,6 +52,9 @@ def test_fills_every_line_in_batches_with_context():
     assert [c["id"] for c in payload["context"]] == [2, 3]
     assert payload["context"][0]["ko"] == "ko2"
     assert payload["glossary"][0]["ko"] == "유키"
+    # local engines only get the entries that occur in the batch or its context
+    first = fake.calls[0]["messages"][1]["content"]
+    assert "glossary" not in json.loads(first[first.index("{"):])
 
 
 def test_locked_lines_are_never_sent_or_changed():

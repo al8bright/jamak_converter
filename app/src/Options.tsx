@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  api, ApiError, basename, inTauri, kindBadge, type Options as Opts, parseTc, type Probe, type Profile,
-  profileDetail, PROVIDER_NAME, tc,
+  api, ApiError, basename, type Glossary, type GlossaryEntry, type GlossarySummary, inTauri, kindBadge,
+  type Options as Opts, parseTc, type Probe, type Profile, profileDetail, PROVIDER_NAME, tc,
 } from "./api";
 import { useApp } from "./ctx";
+import { glossaryText, mergeEntries, parseGlossaryText, sameEntries } from "./glossaryFormat";
 import { pickVideo } from "./Home";
 import { Icon, ICONS, KindBadge, Modal, Note, Page } from "./ui";
 
@@ -11,6 +12,7 @@ const STT_LABELS: Record<string, string> = {
   "large-v3": "large-v3 (기본)",
   "large-v3-turbo": "large-v3-turbo (빠름)",
   "kotoba-whisper-v2.0": "kotoba-whisper-v2.0 (일본어 특화)",
+  "qwen3-asr-1.7b": "Qwen3-ASR 1.7B (구두점·용어집)",
 };
 
 function profileNote(p: Profile): string {
@@ -28,9 +30,10 @@ export function Options({ path: initialPath }: { path: string }) {
   const [probe, setProbe] = useState<Probe | null>(null);
   const [opts, setOpts] = useState<Opts | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
-  const [glossaryNames, setGlossaryNames] = useState<string[]>([]);
-  const [glossaryName, setGlossaryName] = useState("");
-  const [glossaryText, setGlossaryText] = useState("");
+  const [glossaries, setGlossaries] = useState<GlossarySummary[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [base, setBase] = useState<GlossaryEntry[]>([]); // merge of the picked glossaries
+  const [gText, setGText] = useState<string | null>(null); // null: not edited for this job
   const [editGlossary, setEditGlossary] = useState(false);
   const [songs, setSongs] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +41,32 @@ export function Options({ path: initialPath }: { path: string }) {
   const [confirmCloud, setConfirmCloud] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
 
+  const installed = useMemo(() => sys?.stt_installed ?? [], [sys]);
   useEffect(() => {
     api.get<Opts>("/options/default").then(setOpts);
-    api.get<string[]>("/glossaries").then(setGlossaryNames);
+    api.get<GlossarySummary[]>("/glossaries").then(setGlossaries);
   }, []);
+
+  // the saved default model may not be downloaded on this PC: fall back to one that is
+  useEffect(() => {
+    if (!opts || !sys || !installed.length || installed.includes(opts.stt.model)) return;
+    setOpts({ ...opts, stt: { ...opts.stt, model: installed[0] } });
+  }, [opts, sys, installed]);
+
+  // pick the glossaries whose name or alias appears in the file name
+  useEffect(() => {
+    api.get<{ names: string[] }>(`/glossaries/suggest?filename=${encodeURIComponent(basename(path))}`)
+      .then((r) => { if (r.names.length) { setPicked(r.names); setGText(null); } })
+      .catch(() => {});
+  }, [path]);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all(picked.map((n) => api.get<Glossary>(`/glossaries/${encodeURIComponent(n)}`)))
+      .then((gs) => { if (alive) setBase(mergeEntries(...gs.map((g) => g.entries))); })
+      .catch(() => { if (alive) setBase([]); });
+    return () => { alive = false; };
+  }, [picked]);
 
   useEffect(() => {
     if (profileId !== null || !profiles.length) return;
@@ -62,21 +87,27 @@ export function Options({ path: initialPath }: { path: string }) {
 
   const profile = profiles.find((p) => p.id === profileId) ?? null;
 
-  async function loadGlossary(name: string) {
-    setGlossaryName(name);
-    if (!name) { setGlossaryText(""); return; }
-    const r = await api.get<{ entries: { ja: string; ko: string }[] }>(`/glossaries/${encodeURIComponent(name)}`);
-    setGlossaryText(r.entries.map((e) => `${e.ja}=${e.ko}`).join("\n"));
+  const finalGlossary = gText === null ? base : parseGlossaryText(gText);
+  const editedForJob = gText !== null && !sameEntries(finalGlossary, base);
+
+  function toggleGlossary(n: string) {
+    setPicked((x) => (x.includes(n) ? x.filter((y) => y !== n) : [...x, n]));
+    setGText(null);
   }
 
   async function saveGlossary(name: string) {
     const n = name.trim();
     if (!n) return;
-    await api.put(`/glossaries/${encodeURIComponent(n)}`, { entries: parseGlossary(glossaryText) });
-    setGlossaryNames((x) => (x.includes(n) ? x : [...x, n].sort()));
-    setGlossaryName(n);
-    setSaved(`"${n}" 용어집을 저장했습니다.`);
-    setTimeout(() => setSaved(null), 2500);
+    try {
+      await api.put(`/glossaries/${encodeURIComponent(n)}`, { entries: finalGlossary });
+      setGlossaries(await api.get<GlossarySummary[]>("/glossaries"));
+      setPicked([n]);
+      setGText(null);
+      setSaved(`"${n}" 용어집에 저장했습니다.`);
+      setTimeout(() => setSaved(null), 2500);
+    } catch (e) {
+      setError(`용어집을 저장하지 못했습니다: ${(e as Error).message}`);
+    }
   }
 
   async function pickOutDir() {
@@ -103,7 +134,7 @@ export function Options({ path: initialPath }: { path: string }) {
     try {
       const body = {
         video_path: path, profile_id: profile.id,
-        options: { ...opts, glossary: parseGlossary(glossaryText), songs: { ...opts.songs, ranges } },
+        options: { ...opts, glossary: finalGlossary, glossary_names: picked, songs: { ...opts.songs, ranges } },
       };
       const st = await api.post<{ key: string }>("/jobs", body);
       await refreshJobs();
@@ -117,17 +148,18 @@ export function Options({ path: initialPath }: { path: string }) {
   const name = probe?.name ?? basename(path);
   const stem = name.replace(/\.[^.]+$/, "");
   const firstFmt = opts?.output.formats[0] ?? "srt";
-  const glossaryCount = parseGlossary(glossaryText).length;
+  const hintCount = finalGlossary.filter((e) => e.hint).length;
 
   return (
     <Page
-      eyebrow={<><button onClick={() => go({ kind: "home" })}>NEW JOB</button> › OPTIONS</>}
+      eyebrow={<><button className="tracked" onClick={() => go({ kind: "home" })}>NEW JOB</button> › <span className="tracked">OPTIONS</span></>}
       title="작업 옵션"
       actions={<>
         <span className="small muted" style={{ fontSize: 12 }}>번역: <b style={{ color: "var(--text)" }}>{profile?.name ?? "—"}</b></span>
         <button className="btn" onClick={() => go({ kind: "home" })}>취소</button>
         <button className="btn primary" onClick={requestStart}
-          disabled={busy || !probe || !opts || !profile?.status.ready || !opts.output.formats.length && !opts.output.dual_ass}>
+          disabled={busy || !probe || !opts || !profile?.status.ready || !installed.includes(opts.stt.model)
+            || !opts.output.formats.length && !opts.output.dual_ass}>
           {busy ? "시작하는 중…" : "처리 시작"}
         </button>
       </>}
@@ -194,25 +226,51 @@ export function Options({ path: initialPath }: { path: string }) {
                 사용한 토큰과 예상 비용은 진행 화면에 표시됩니다.
               </Note>
             )}
-            <div className="field">
-              <label htmlFor="opt-glossary">용어집</label>
-              <span style={{ display: "flex", gap: 6 }}>
-                <select id="opt-glossary" className="input" value={glossaryName} onChange={(e) => loadGlossary(e.target.value)}>
-                  <option value="">{glossaryText.trim() && !glossaryName ? `직접 입력 · ${glossaryCount}개 항목` : "사용 안 함"}</option>
-                  {glossaryNames.map((n) => <option key={n} value={n}>{n}{n === glossaryName ? ` · ${glossaryCount}개 항목` : ""}</option>)}
-                </select>
-                <button className="btn" aria-expanded={editGlossary} onClick={() => setEditGlossary(!editGlossary)}>
+            <div className="field" role="group" aria-labelledby="gl-label">
+              <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span id="gl-label">용어집 <span className="small muted">(여러 개를 겹쳐 쓸 수 있음)</span></span>
+                <button className="link" onClick={() => go({ kind: "glossary" })}>용어집 관리</button>
+              </span>
+              {glossaries.length ? (
+                <span className="chips">
+                  {glossaries.map((g) => (
+                    <button key={g.name} className="gl-chip" aria-pressed={picked.includes(g.name)} onClick={() => toggleGlossary(g.name)}>
+                      {picked.includes(g.name) && <Icon d={ICONS.check} size={12} />}
+                      {g.name} <span className="n">{g.count}</span>
+                    </button>
+                  ))}
+                </span>
+              ) : (
+                <span className="small muted">저장한 용어집이 없습니다. 아래 편집에서 이번 작업용으로 적거나 용어집 관리에서 만드세요.</span>
+              )}
+              <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="small muted grow">
+                  {finalGlossary.length ? `이 작업에 쓸 항목 ${finalGlossary.length}개${hintCount ? ` · 인식 힌트 ${hintCount}` : ""}` : "용어집 사용 안 함"}
+                  {editedForJob && " · 이번 작업에서 고침"}
+                </span>
+                <button className="btn sm" aria-expanded={editGlossary} onClick={() => setEditGlossary(!editGlossary)}>
                   {editGlossary ? "닫기" : "편집"}
                 </button>
               </span>
             </div>
             {editGlossary && (
               <div className="stack" style={{ gap: 6 }}>
-                <textarea className="input" rows={5} value={glossaryText} spellCheck={false}
-                  aria-label="용어집 항목. 한 줄에 하나씩 일본어=한국어"
-                  placeholder={"ユウキ=유키\n先輩=선배"} onChange={(e) => setGlossaryText(e.target.value)} />
-                <span className="small muted">한 줄에 하나씩 일본어=한국어. 인물 이름이 틀리지 않게 하고, 음성 인식에도 힌트로 씁니다.</span>
-                <GlossarySave initial={glossaryName} onSave={saveGlossary} disabled={!glossaryText.trim()} />
+                <textarea className="input" rows={6} value={gText ?? glossaryText(base)} spellCheck={false}
+                  aria-label="이 작업에 쓸 용어집 항목. 한 줄에 하나씩 일본어=한국어"
+                  placeholder={"ユウキ=유키 # 주인공\n*先輩=선배"} onChange={(e) => setGText(e.target.value)} />
+                <span className="small muted">
+                  한 줄에 하나씩 일본어=한국어. “ # 메모”로 말투·성별을 적고, 앞에 *를 붙이면 음성 인식 힌트로도 씁니다.
+                  저장하지 않으면 이번 작업에만 쓰입니다.
+                </span>
+                {editedForJob && (
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {picked.length === 1 && (
+                      <button className="btn sm" onClick={() => saveGlossary(picked[0])}>“{picked[0]}”에 저장</button>
+                    )}
+                    <GlossarySave initial={picked.length === 1 ? "" : stem.slice(0, 40)} onSave={saveGlossary} disabled={!finalGlossary.length} />
+                    <button className="btn sm bare" onClick={() => setGText(null)}>고친 것 버리기</button>
+                  </span>
+                )}
                 {saved && <span className="small ok-fg" role="status">{saved}</span>}
               </div>
             )}
@@ -225,8 +283,15 @@ export function Options({ path: initialPath }: { path: string }) {
                 <label className="field">
                   STT 모델
                   <select className="input" value={opts.stt.model} onChange={(e) => setOpts({ ...opts, stt: { ...opts.stt, model: e.target.value } })}>
-                    {(sys?.stt_models ?? ["large-v3"]).map((m) => <option key={m} value={m}>{STT_LABELS[m] ?? m}</option>)}
+                    {(sys?.stt_models ?? ["large-v3"]).map((m) => (
+                      <option key={m} value={m}>{STT_LABELS[m] ?? m}{installed.includes(m) ? "" : " · 받기 필요"}</option>
+                    ))}
                   </select>
+                  {!installed.includes(opts.stt.model) && (
+                    <span className="small warn-fg">
+                      이 모델은 아직 받지 않았습니다. <button className="link" onClick={() => go({ kind: "models" })}>모델 관리에서 받기</button>
+                    </span>
+                  )}
                 </label>
                 <label className="field">
                   오프닝·엔딩 노래 구간
@@ -325,21 +390,9 @@ function GlossarySave({ initial, onSave, disabled }: { initial: string; onSave: 
   return (
     <span style={{ display: "flex", gap: 6 }}>
       <input className="input sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="작품 이름" aria-label="용어집 이름" />
-      <button className="btn sm" disabled={disabled || !name.trim()} onClick={() => onSave(name)}>용어집 저장</button>
+      <button className="btn sm" disabled={disabled || !name.trim()} onClick={() => onSave(name)}>새 용어집으로 저장</button>
     </span>
   );
-}
-
-function parseGlossary(text: string) {
-  return text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#") && l.includes("="))
-    .map((l) => {
-      const [ja, ...rest] = l.split("=");
-      return { ja: ja.trim(), ko: rest.join("=").trim(), note: "" };
-    })
-    .filter((e) => e.ja && e.ko);
 }
 
 function parseSongs(text: string): [number, number][] | null {

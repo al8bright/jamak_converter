@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import threading
 import time
@@ -11,24 +10,16 @@ from pathlib import Path
 
 from jamak import __version__
 from jamak.config import GlossaryEntry, PipelineOptions, default_llm_path, paths
+from jamak.core import providers
 
 
 def load_glossary(path: Path) -> list[GlossaryEntry]:
-    """JSON list of {ja, ko, note?} or a text file with one `ja=ko` per line."""
-    text = path.read_text(encoding="utf-8-sig")
-    if path.suffix.lower() == ".json":
-        data = json.loads(text)
-        if isinstance(data, dict):
-            data = data.get("entries", [])
-        return [GlossaryEntry.model_validate(d) for d in data]
-    out = []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        ja, ko = line.split("=", 1)
-        out.append(GlossaryEntry(ja=ja.strip(), ko=ko.strip()))
-    return out
+    """A glossary file (.json, .csv, or .txt with one `ja=ko` per line), or the name of a saved glossary."""
+    from jamak.core import glossary as gl
+
+    if not path.exists() and gl.NAME_RE.fullmatch(str(path)):
+        return gl.load(str(path)).entries
+    return gl.parse_file(path)[0]
 
 
 def parse_time(text: str) -> float:
@@ -309,7 +300,7 @@ def main(argv: list[str] | None = None) -> None:
     ks = k.add_subparsers(dest="action", required=True)
     ks.add_parser("list")
     ka = ks.add_parser("add")
-    ka.add_argument("provider", choices=["anthropic", "gemini", "openai_compat"])
+    ka.add_argument("provider", choices=[*providers.CLOUD_KINDS, "openai_compat"])
     ka.add_argument("--label")
     kr = ks.add_parser("remove")
     kr.add_argument("id", type=int)
@@ -320,7 +311,7 @@ def main(argv: list[str] | None = None) -> None:
     ps.add_parser("list")
     pa = ps.add_parser("add")
     pa.add_argument("name")
-    pa.add_argument("kind", choices=["local_managed", "local_external", "anthropic", "gemini"])
+    pa.add_argument("kind", choices=["local_managed", "local_external", *providers.CLOUD_KINDS])
     pa.add_argument("--model", help="GGUF path, external model name, or API model ID (e.g. claude-opus-5-5)")
     pa.add_argument("--url", help="local_external: OpenAI-compatible base URL")
     pa.add_argument("--key", type=int, help="API key id (see: jamak keys list)")

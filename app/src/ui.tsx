@@ -12,6 +12,7 @@ export function Logo({ big }: { big?: boolean }) {
       <span className="g ja" lang="ja">字</span>
       <span className="g ko">자</span>
       <span className="g gh">자</span>
+      <span className="g gh2" lang="ja">字</span>
       <span className="bar" />
     </span>
   );
@@ -34,6 +35,8 @@ export const ICONS = {
   check: "M5 12.5 10 17l9-10",
   x: "M6 6l12 12M18 6 6 18",
   alert: "M12 3 2 20h20zM12 10v4M12 17h.01",
+  book: "M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5zM4 21.5A2.5 2.5 0 0 1 6.5 19H20M8 7h8M8 11h6",
+  download: "M12 3v12M7 10l5 5 5-5M4 19h16",
 };
 
 export function Icon({ d, size = 16, stroke, width = 2, className }: {
@@ -49,6 +52,12 @@ export function Icon({ d, size = 16, stroke, width = 2, className }: {
 
 // ------------------------------------------------------------------ page frame: header + glowing body panel
 
+/** Letter-spacing only on Latin capitals (DESIGN.md 4.2): "REVIEW · 21:37 완료" -> tracked "REVIEW" + plain rest. */
+export function tracked(text: string): ReactNode {
+  const parts = text.split(/([A-Z][A-Z0-9]*(?: [A-Z][A-Z0-9]*)*)/);
+  return parts.map((p, i) => (i % 2 ? <span className="tracked" key={i}>{p}</span> : p));
+}
+
 export function Page({ eyebrow, title, actions, children, wide, label = "본문" }: {
   eyebrow: ReactNode; title: ReactNode; actions?: ReactNode; children: ReactNode; wide?: boolean; label?: string;
 }) {
@@ -56,7 +65,7 @@ export function Page({ eyebrow, title, actions, children, wide, label = "본문"
     <>
       <header className="head">
         <div className="head-title">
-          <span className="eyebrow">{eyebrow}</span>
+          <span className="eyebrow">{typeof eyebrow === "string" ? tracked(eyebrow) : eyebrow}</span>
           <h1>{title}</h1>
         </div>
         {actions && <div className="head-actions">{actions}</div>}
@@ -68,10 +77,14 @@ export function Page({ eyebrow, title, actions, children, wide, label = "본문"
   );
 }
 
-export function SettingsTabs({ current, go }: { current: "engine" | "system"; go: (v: "engine" | "system") => void }) {
+type SettingsView = "engine" | "glossary" | "models" | "system";
+
+export function SettingsTabs({ current, go }: { current: SettingsView; go: (v: SettingsView) => void }) {
   return (
     <nav className="seg" aria-label="설정 영역">
       <button aria-current={current === "engine" ? "page" : undefined} onClick={() => go("engine")}>번역 엔진</button>
+      <button aria-current={current === "glossary" ? "page" : undefined} onClick={() => go("glossary")}>용어집</button>
+      <button aria-current={current === "models" ? "page" : undefined} onClick={() => go("models")}>모델 관리</button>
       <button aria-current={current === "system" ? "page" : undefined} onClick={() => go("system")}>시스템 상태</button>
     </nav>
   );
@@ -97,7 +110,7 @@ export function Modal({ title, children, actions, onClose }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>("button.primary, button")?.focus();
+    ref.current?.querySelector<HTMLElement>("[data-autofocus], button.primary:not(:disabled), button:not(:disabled)")?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

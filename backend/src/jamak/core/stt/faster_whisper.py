@@ -5,7 +5,7 @@ import os
 import threading
 from pathlib import Path
 
-from jamak.config import SttOptions, paths
+from jamak.config import SttOptions
 from jamak.core import cuda
 from jamak.core.stt.base import ProgressFn
 from jamak.core.types import SttSegment, Transcript, Word
@@ -15,11 +15,24 @@ class Cancelled(Exception):
     pass
 
 
-# names offered in the UI -> what faster-whisper loads ("large-v3" / "large-v3-turbo" are built in)
-MODEL_ALIASES = {
-    "kotoba-whisper-v2.0": "kotoba-tech/kotoba-whisper-v2.0-faster",  # Japanese-tuned distil model
-}
-MODEL_CHOICES = ["large-v3", "large-v3-turbo", "kotoba-whisper-v2.0"]
+def model_path(model: str) -> str:
+    """Local folder of a downloaded model (never downloads during a job: see 설정 › 모델 관리).
+
+    A path to a CTranslate2 model folder also works (development / custom models).
+    """
+    from jamak import models
+    from jamak.installer import fix_alignment_heads
+
+    if Path(model).is_dir():
+        return model
+    s = models.spec(model)
+    if s is None or s.engine != "faster-whisper":
+        raise models.ModelMissing(f"알 수 없는 Whisper 모델입니다: {model}")
+    dirs = models.local_dirs(s)
+    if dirs is None:
+        raise models.ModelMissing(f"{s.name}을(를) 아직 받지 않았습니다. 설정 › 모델 관리에서 받으세요")
+    fix_alignment_heads(s.id, dirs[0])  # also for copies downloaded by older versions
+    return str(dirs[0])
 
 
 class FasterWhisperRecognizer:
@@ -43,13 +56,7 @@ class FasterWhisperRecognizer:
             from faster_whisper import WhisperModel
 
             device, compute = self._resolve_device()
-            paths.whisper_models.mkdir(parents=True, exist_ok=True)
-            self._model = WhisperModel(
-                MODEL_ALIASES.get(self.opts.model, self.opts.model),
-                device=device,
-                compute_type=compute,
-                download_root=str(paths.whisper_models),
-            )
+            self._model = WhisperModel(model_path(self.opts.model), device=device, compute_type=compute)
             self.device, self.compute_type = device, compute
         return self._model
 

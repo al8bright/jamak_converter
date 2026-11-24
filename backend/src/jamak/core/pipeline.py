@@ -42,10 +42,13 @@ class RunResult:
 
 
 def initial_prompt(opts: PipelineOptions) -> str | None:
-    terms = [g.ja for g in opts.glossary if g.ja.strip()]
+    """Recognition hint from the glossary: entries marked as hints (or the first 40 if none are)."""
+    from jamak.core.glossary import hint_terms
+
+    terms = hint_terms(opts.glossary)
     if not terms:
         return None
-    return "登場人物・用語：" + "、".join(terms[:40]) + "。"
+    return "登場人物・用語：" + "、".join(terms) + "。"
 
 
 class Pipeline:
@@ -86,8 +89,7 @@ class Pipeline:
         fps: dict[str, str] = {}
         fps["audio"] = fingerprint({"track": o.audio.track, "sr": audio_mod.SAMPLE_RATE, "v": 1}, self.job.key)
         fps["separate"] = (fingerprint(o.separate, fps["audio"]) if o.separate.enabled else fps["audio"])
-        fps["stt"] = fingerprint({"stt": o.stt.model_dump(mode="json"), "prompt": initial_prompt(o), "v": 1},
-                                 fps["separate"])
+        fps["stt"] = fingerprint({"stt": stt_identity(o), "prompt": initial_prompt(o), "v": 1}, fps["separate"])
         fps["segment"] = fingerprint({"filters": o.filters.model_dump(mode="json"),
                                       "segment": o.segment.model_dump(mode="json"),
                                       "songs": o.songs.model_dump(mode="json"), "v": 1}, fps["stt"])
@@ -228,11 +230,25 @@ def apply_song_ranges(lines: list, songs) -> list:
     return out
 
 
+def stt_identity(o: PipelineOptions) -> dict[str, Any]:
+    """STT options that decide the transcript. Same shape as before Qwen3-ASR for Whisper models,
+    so caches made by older versions stay valid."""
+    from jamak.core.stt.base import engine_for
+
+    d = o.stt.model_dump(mode="json")
+    d["engine"] = engine_for(o.stt)
+    if d["engine"] != "qwen-asr":
+        d.pop("batch_size", None)
+        d.pop("max_chunk", None)
+    return d
+
+
 def translate_identity(o: PipelineOptions) -> dict[str, Any]:
     """What decides the translate output: engine kind + model + prompt version + options.
 
     Never includes the API key (or its id): switching keys does not retranslate.
     """
+    from jamak.core.glossary import content_key
     from jamak.core.translate.prompts import PROMPT_VERSION
 
     t = o.translate
@@ -246,7 +262,7 @@ def translate_identity(o: PipelineOptions) -> dict[str, Any]:
     return {
         "kind": t.mode, "model": model_id, "prompt": PROMPT_VERSION, "batch": t.batch_size,
         "ctx": t.context_lines, "temp": t.temperature if t.mode in ("managed", "external", "gemini") else None,
-        "parallel": t.parallel > 1, "glossary": [g.model_dump() for g in o.glossary], "v": 2,
+        "parallel": t.parallel > 1, "glossary": content_key(o.glossary), "v": 2,
     }
 
 
@@ -254,7 +270,7 @@ def engine_summary(t) -> dict[str, Any]:
     from jamak.core.translate.factory import model_label
 
     return {"kind": t.mode, "profile_id": t.profile_id, "profile_name": t.profile_name, "model": model_label(t),
-            "cloud": t.mode in ("anthropic", "gemini")}
+            "cloud": t.mode not in ("managed", "external")}
 
 
 def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cancel=None,
@@ -264,7 +280,7 @@ def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cance
     progress(frac, message, usage) gets the running token/cost counters. Lines a cloud
     service refused are retranslated with the local model when the profile says so.
     """
-    from jamak.core.translate.base import TranslationCancelled
+    from jamak.core.translate.base import EngineError, TranslationCancelled
     from jamak.core.translate.factory import CLOUD_MODES, local_fallback_options, open_engine
 
     t = opts.translate
@@ -274,13 +290,28 @@ def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cance
             progress(f, m, engine.snapshot() if engine is not None else None)
 
     stats: dict[str, Any] = {}
+    refused: set[int] = set()
     try:
-        with open_engine(t, log_path=job.path("llama-server.log"), cancel=cancel,
-                         progress=lambda f, m: say(f, m)) as engine:
-            engine.translate(lines, opts.glossary, progress=lambda f, m: say(f, m, engine), cancel=cancel,
-                             only_ids=only_ids)
-            stats = engine.snapshot()
-            refused = set(engine.refused_ids)
+        try:
+            with open_engine(t, log_path=job.path("llama-server.log"), cancel=cancel,
+                             progress=lambda f, m: say(f, m)) as engine:
+                engine.translate(lines, opts.glossary, progress=lambda f, m: say(f, m, engine), cancel=cancel,
+                                 only_ids=only_ids)
+                stats = engine.snapshot()
+                refused = set(engine.refused_ids)
+            failed = {ln.id for ln in lines if "translate_failed" in ln.flags
+                      and (only_ids is None or ln.id in only_ids)}
+            error = None
+        except EngineError as e:
+            if t.mode not in CLOUD_MODES or t.fallback_profile_id is None:
+                raise
+            failed = {ln.id for ln in lines if not ln.locked and (only_ids is None or ln.id in only_ids)
+                      and (not ln.ko or "translate_failed" in ln.flags)}
+            error = str(e)
+        if failed and t.mode in CLOUD_MODES and t.fallback_profile_id is not None:
+            fb_stats = _cloud_fallback(lines, opts, job, failed, error, say, cancel)
+            if fb_stats:
+                stats["cloud_fallback"] = fb_stats
         if refused and t.mode in CLOUD_MODES and t.refusal == "local":
             local = local_fallback_options(t)
             if local is None:
@@ -296,6 +327,30 @@ def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cance
     except TranslationCancelled as e:
         raise Cancelled() from e
     return stats
+
+
+def _cloud_fallback(lines, opts: PipelineOptions, job: Job, ids: set[int], error: str | None, say, cancel):
+    """Finish the lines the chosen cloud service could not translate with the profile's fallback."""
+    from jamak.core.store import store
+    from jamak.core.translate.base import EngineError
+    from jamak.core.translate.factory import apply_profile, open_engine
+
+    t = opts.translate
+    p = store.get_profile(t.fallback_profile_id) if t.fallback_profile_id is not None else None
+    if p is None or p.id == t.profile_id:
+        if error:
+            raise EngineError(error)
+        return None
+    fb = apply_profile(t.model_copy(), p)
+    fb.fallback_profile_id = None
+    say(0.999, f"{len(ids)} lines -> {p.name}" + (f" ({error[:80]})" if error else ""))
+    with open_engine(fb, log_path=job.path("llama-server.log"), cancel=cancel) as engine:
+        engine.translate(lines, opts.glossary, cancel=cancel, only_ids=ids)
+        out = {"profile": p.name, "lines": len(ids), "reason": (error or "failed lines")[:200], **engine.snapshot()}
+    for ln in lines:
+        if ln.id in ids and ln.ko and "cloud_fallback" not in ln.flags:
+            ln.flags.append("cloud_fallback")
+    return out
 
 
 def save_options(job: Job, opts: PipelineOptions) -> None:

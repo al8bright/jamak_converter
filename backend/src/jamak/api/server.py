@@ -27,6 +27,7 @@ from jamak import __version__
 from jamak.api.jobs import JobManager, list_job_dirs, load_options, purge_job
 from jamak.config import GlossaryEntry, OutputOptions, PipelineOptions, default_llm_path, paths
 from jamak.core.cache import Job, write_json_atomic
+from jamak.core.pipeline import save_options
 from jamak.core.proc import CREATE_NO_WINDOW
 from jamak.core.store import Profile, ProfileInput, StoreError, store
 from jamak.core.translate.base import EngineError
@@ -78,16 +79,31 @@ class PathBody(BaseModel):
 
 class GlossaryBody(BaseModel):
     entries: list[GlossaryEntry]
+    aliases: list[str] | None = None  # None: keep the current aliases
+
+
+class GlossaryImport(BaseModel):
+    path: str
+    name: str | None = None  # default: the file name
+    mode: Literal["new", "replace", "merge"] = "new"
+
+
+class NameBody(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
 
 
 class InstallBody(BaseModel):
     ids: list[str] | None = None
 
 
+class RemoveBody(BaseModel):
+    id: str
+
+
 class KeyBody(BaseModel):
-    provider: Literal["anthropic", "gemini", "openai_compat"]
+    provider: str = Field(min_length=1, max_length=40)  # core/providers.py id, or openai_compat
     label: str = Field("", max_length=60)
-    secret: str = Field(min_length=1, max_length=500, repr=False)
+    secret: str = Field(min_length=1, max_length=1000, repr=False)  # Papago: "<client id>\n<secret>"
 
 
 class DefaultProfileBody(BaseModel):
@@ -121,10 +137,34 @@ def _lines_path(job: Job) -> tuple[Path, str]:
     raise HTTPException(409, "no subtitles yet")
 
 
-def _glossary_file(name: str) -> Path:
-    if not re.fullmatch(r"[\w\-. ]{1,64}", name) or name.startswith("."):
-        raise HTTPException(400, "bad glossary name")
-    return paths.glossaries / f"{name}.json"
+def _entry_map(entries: list[GlossaryEntry]) -> dict[str, tuple[str, str]]:
+    return {e.ja: (e.ko, e.note) for e in entries}
+
+
+def rebuild_glossary(opts: PipelineOptions) -> tuple[list[GlossaryEntry], list[GlossaryEntry]]:
+    """(new job glossary, new base): current named glossaries + the edits this job made to its base."""
+    from jamak.core import glossary as gl
+
+    base_now, _ = gl.merge(opts.glossary_names)
+    old_base = _entry_map(opts.glossary_base)
+    mine = _entry_map(opts.glossary)
+    removed = {ja for ja in old_base if ja not in mine}
+    edits = [e for e in opts.glossary if old_base.get(e.ja) != (e.ko, e.note)]
+    merged, _ = gl.merge([], [e for e in base_now if e.ja not in removed] + edits)
+    return merged, base_now
+
+
+def glossary_status(opts: PipelineOptions) -> dict[str, Any]:
+    from jamak.core import glossary as gl
+
+    if not opts.glossary_names:
+        return {"names": [], "changed": False, "missing": [], "count": len(opts.glossary)}
+    now, missing = gl.merge(opts.glossary_names)
+    def key(entries: list[GlossaryEntry]) -> list[tuple[str, str, str, bool]]:
+        return [(e.ja, e.ko, e.note, e.hint) for e in entries]
+
+    changed = key(now) != key(opts.glossary_base)
+    return {"names": opts.glossary_names, "changed": changed, "missing": missing, "count": len(opts.glossary)}
 
 
 def _gpu_info() -> list[dict[str, Any]]:
@@ -156,8 +196,9 @@ def _ffmpeg_path() -> str | None:
 
 
 def system_info() -> dict[str, Any]:
+    from jamak import models
     from jamak.core import cuda, separate
-    from jamak.core.stt.faster_whisper import MODEL_CHOICES
+    from jamak.installer import present
 
     llama = {"path": str(paths.llama_server_exe), "exists": paths.llama_server_exe.exists()}
     vfile = paths.llama_dir / "version.json"
@@ -166,11 +207,11 @@ def system_info() -> dict[str, Any]:
             llama["build"] = json.loads(vfile.read_text(encoding="utf-8-sig")).get("build")
         except json.JSONDecodeError:
             pass
-    models = []
+    ggufs = []
     if paths.models.exists():
         for p in sorted(paths.models.glob("*.gguf")):
             if not p.name.startswith("mmproj"):
-                models.append({"name": p.name, "path": str(p), "size_gb": round(p.stat().st_size / 1e9, 2)})
+                ggufs.append({"name": p.name, "path": str(p), "size_gb": round(p.stat().st_size / 1e9, 2)})
     default = default_llm_path()
     from jamak.api.checks import cpu_name, short_cpu
 
@@ -182,9 +223,10 @@ def system_info() -> dict[str, Any]:
         "cuda_devices": cuda.cuda_device_count(),
         "gpus": _gpu_info(),
         "llama_server": llama,
-        "llm_models": models,
+        "llm_models": ggufs,
         "default_llm": str(default) if default else None,
-        "stt_models": MODEL_CHOICES,
+        "stt_models": models.STT_IDS,
+        "stt_installed": [m for m in models.STT_IDS if present(m)],
         "separation_available": separate.available(),
     }
 
@@ -293,6 +335,22 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
             subprocess.Popen(["explorer", "/select,", str(p)], creationflags=CREATE_NO_WINDOW)
         return {"ok": True}
 
+    class UrlBody(BaseModel):
+        url: str
+
+    @app.post("/system/open-url")
+    def open_url(body: UrlBody):
+        """Open a provider's key or pricing page in the default browser (only those known URLs)."""
+        from jamak.core import providers
+
+        allowed = {u for pv in providers.PROVIDERS for u in (pv.key_url, pv.pricing_url) if u}
+        if body.url not in allowed:
+            raise HTTPException(400, "열 수 없는 주소입니다")
+        import webbrowser
+
+        webbrowser.open(body.url)
+        return {"ok": True}
+
     # -------------------------------------------------------------- jobs
     @app.get("/jobs")
     def jobs():
@@ -313,6 +371,21 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
         if body.force_from and body.force_from not in ("audio", "separate", "stt", "segment", "translate"):
             raise HTTPException(400, "bad force_from")
         opts = body.options or PipelineOptions()
+        from jamak.models import ModelMissing, require_stt
+
+        if body.force_from not in ("segment", "translate"):  # those reuse the cached transcript
+            try:
+                require_stt(opts.stt.model)
+            except ModelMissing as e:
+                raise HTTPException(409, str(e)) from e
+        if opts.glossary_names and not opts.glossary_base:  # a new job (a rerun keeps its own snapshot)
+            from jamak.core import glossary as gl
+
+            opts.glossary_base, missing = gl.merge(opts.glossary_names)
+            if missing:
+                raise HTTPException(400, f"용어집이 없습니다: {', '.join(missing)}")
+            if not opts.glossary:
+                opts.glossary = list(opts.glossary_base)
         try:
             st = mgr.submit_run(p, opts, body.force_from, profile_id=body.profile_id)
         except EngineError as e:
@@ -428,16 +501,36 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
 
     # -------------------------------------------------------------- first-run setup
     @app.get("/setup")
-    def setup_status():
-        return {"running": setup.running(), "components": setup.status()}
+    def setup_status(sizes: bool = False):
+        from jamak.installer import recommended_stt
+
+        gpus = _gpu_info()
+        vram = round(gpus[0]["memory_total_mb"] / 1024, 1) if gpus else None
+        return {"running": setup.running(), "components": setup.status(sizes=sizes), "ready": setup.ready(),
+                "vram_gb": vram, "recommended_stt": recommended_stt(vram),
+                "free_bytes": shutil.disk_usage(paths.home if paths.home.exists() else paths.home.anchor).free}
 
     @app.post("/setup/install", status_code=202)
     def setup_install(body: InstallBody):
         try:
-            setup.install(body.ids)
+            queued = setup.install(body.ids)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from e
-        return {"running": True}
+        return {"running": True, "queued": queued}
+
+    @app.post("/setup/remove")
+    def setup_remove(body: RemoveBody):
+        if any(mgr.busy(k) for k in list(mgr.states)):
+            raise HTTPException(409, "작업이 끝난 뒤 지우세요")
+        try:
+            setup.remove(body.id)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(409, str(e)) from e
+        return {"ok": True}
 
     @app.post("/setup/cancel")
     def setup_cancel():
@@ -465,7 +558,13 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
 
     @app.post("/settings/translation-profiles", status_code=201)
     def add_profile(body: ProfileInput):
-        return profile_public(_store_call(store.add_profile, body))
+        from jamak.api.checks import profile_status
+
+        p = _store_call(store.add_profile, body)
+        default = store.default_profile()
+        if p.cloud and (default is None or not profile_status(default)["ready"]):
+            store.set_default(p.id)  # the local engine is not installed: the first cloud profile becomes the default
+        return profile_public(p)
 
     @app.put("/settings/translation-profiles/{profile_id}")
     def update_profile(profile_id: int, body: ProfileInput):
@@ -496,27 +595,103 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
         _store_call(store.set_default, body.profile_id)
         return {"ok": True}
 
+    @app.get("/settings/providers")
+    def list_providers():
+        from jamak.core import providers
+
+        return [providers.public(p) for p in providers.PROVIDERS]
+
+    def _secret_for(kind: str, key_id: int | None) -> str:
+        from jamak.core import providers
+
+        info = providers.get(kind)
+        try:
+            secret = store.key_secret(key_id) if key_id is not None else next(
+                (os.environ[n] for n in (info.env if info else ()) if os.environ.get(n)), None)
+        except StoreError as e:
+            raise HTTPException(400, str(e)) from e
+        if not secret:
+            raise HTTPException(400, f"{info.name if info else kind} 키를 먼저 고르세요")
+        return secret
+
     @app.get("/settings/models")
-    def list_models(kind: Literal["anthropic", "gemini", "local_managed"], key_id: int | None = None):
+    def list_models(kind: str, key_id: int | None = None):
+        from jamak.core import providers
+
+        if kind == "local_managed":
+            return {"models": [m["path"] for m in system_info()["llm_models"]]}
         if kind == "anthropic":
             from jamak.core.translate.anthropic_api import MODELS
 
             return {"models": MODELS}
-        if kind == "local_managed":
-            return {"models": [m["path"] for m in system_info()["llm_models"]]}
-        from jamak.core.translate.gemini_api import list_models as gemini_models
+        info = providers.get(kind)
+        if info is None:
+            raise HTTPException(400, "알 수 없는 제공자입니다")
+        if not info.lists_models:
+            return {"models": list(info.models)}
+        secret = _secret_for(kind, key_id)
+        try:
+            if info.family == "gemini":
+                from jamak.core.translate.gemini_api import list_models as gemini_models
 
-        try:
-            secret = (store.key_secret(key_id) if key_id is not None
-                      else os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-        except StoreError as e:
-            raise HTTPException(400, str(e)) from e
-        if not secret:
-            raise HTTPException(400, "Gemini 키를 먼저 고르세요")
-        try:
-            return {"models": gemini_models(secret)}
-        except Exception as e:
+                return {"models": gemini_models(secret)}
+            from jamak.core.translate.openai_compat import list_models as compat_models
+
+            return {"models": compat_models(info.base_url or "", secret)}
+        except Exception as e:  # never echo the key: only the exception type
             raise HTTPException(502, f"모델 목록을 가져오지 못했습니다 ({type(e).__name__})") from e
+        finally:
+            del secret
+
+    @app.post("/settings/api-keys/{key_id}/check")
+    def check_key(key_id: int):
+        """Ask the service whether the key works (lists models, or the usage for DeepL)."""
+        from jamak.core import providers
+
+        k = store.key_info(key_id)
+        if k is None:
+            raise HTTPException(404, "API 키가 없습니다")
+        info = providers.get(k["provider"])
+        if info is None:
+            return {"ok": True, "message": "외부 서버 키는 프로필 연결 테스트로 확인하세요"}
+        secret = _secret_for(info.id, key_id)
+        try:
+            if info.family == "anthropic":
+                import anthropic
+
+                n = len(anthropic.Anthropic(api_key=secret, max_retries=0, timeout=20).models.list(limit=20).data)
+                msg = f"키 확인됨 · 모델 {n}개"
+            elif info.family == "gemini":
+                from jamak.core.translate.gemini_api import list_models as gemini_models
+
+                msg = f"키 확인됨 · 모델 {len(gemini_models(secret))}개"
+            elif info.family == "openai":
+                from jamak.core.translate.openai_compat import list_models as compat_models
+
+                msg = f"키 확인됨 · 모델 {len(compat_models(info.base_url or '', secret))}개"
+            elif info.family == "deepl":
+                from jamak.core.translate.mt_api import deepl_usage
+
+                u = deepl_usage(secret)
+                msg = f"키 확인됨 · 이번 달 {u['characters']:,} / {u['limit']:,}자 사용" if u["limit"] else "키 확인됨"
+            else:
+                from jamak.config import TranslateOptions
+                from jamak.core.translate.mt_api import PapagoTranslator
+
+                eng = PapagoTranslator(TranslateOptions(request_timeout=20), secret)
+                try:
+                    msg = f"키 확인됨 · “テスト” → “{eng._one('テスト')}”"
+                finally:
+                    eng.close()
+            return {"ok": True, "message": msg}
+        except Exception as e:
+            text = str(e)
+            for part in secret.split("\n"):  # defensive: an error message must never carry the key
+                if part and part in text:
+                    text = text.replace(part, "••••")
+            return {"ok": False, "message": f"{type(e).__name__}: {text[:200]}"}
+        finally:
+            del secret
 
     @app.get("/settings/ui")
     def get_ui():
@@ -529,30 +704,113 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
         return body
 
     # -------------------------------------------------------------- glossaries
+    from jamak.core import glossary as gl
+
+    def _gl(fn, *a, **kw):
+        try:
+            return fn(*a, **kw)
+        except FileNotFoundError as e:
+            raise HTTPException(404, "용어집이 없습니다") from e
+        except gl.GlossaryError as e:
+            raise HTTPException(400, str(e)) from e
+
     @app.get("/glossaries")
     def glossaries():
-        if not paths.glossaries.exists():
-            return []
-        return sorted(p.stem for p in paths.glossaries.glob("*.json"))
+        return gl.list_all()
+
+    @app.get("/glossaries/suggest")
+    def suggest_glossaries(filename: str):
+        return {"names": gl.suggest(filename)}
+
+    @app.post("/glossaries/import", status_code=201)
+    def import_glossary(body: GlossaryImport):
+        p = Path(body.path)
+        if not p.is_file():
+            raise HTTPException(404, "파일이 없습니다")
+        try:
+            entries, aliases = gl.parse_file(p)
+        except (gl.GlossaryError, ValueError, UnicodeDecodeError) as e:
+            raise HTTPException(422, f"용어집 파일을 읽지 못했습니다: {e}") from e
+        name = body.name or p.stem
+        if body.mode == "new" and gl.exists(name):
+            raise HTTPException(409, f"'{name}' 용어집이 이미 있습니다")
+        if body.mode == "merge":
+            g = _gl(gl.add_entries, name, entries)
+        else:
+            g = _gl(gl.save, gl.Glossary(name=_gl(gl.check_name, name), aliases=aliases, entries=entries))
+        return {"name": g.name, "count": len(g.entries), "imported": len(entries)}
 
     @app.get("/glossaries/{name}")
     def get_glossary(name: str):
-        f = _glossary_file(name)
-        if not f.exists():
-            raise HTTPException(404, "not found")
-        return {"name": name, "entries": json.loads(f.read_text(encoding="utf-8"))}
+        return _gl(gl.load, name)
 
     @app.put("/glossaries/{name}")
     def put_glossary(name: str, body: GlossaryBody):
-        f = _glossary_file(name)
-        f.parent.mkdir(parents=True, exist_ok=True)
-        write_json_atomic(f, [e.model_dump() for e in body.entries])
-        return {"ok": True}
+        g = gl.Glossary(name=_gl(gl.check_name, name), entries=body.entries, aliases=body.aliases or [])
+        if body.aliases is None and gl.exists(name):
+            g.aliases = _gl(gl.load, name).aliases
+        return _gl(gl.save, g)
+
+    @app.post("/glossaries/{name}/entries")
+    def add_glossary_entries(name: str, body: GlossaryBody):
+        return _gl(gl.add_entries, name, body.entries)
+
+    @app.post("/glossaries/{name}/rename")
+    def rename_glossary(name: str, body: NameBody):
+        return _gl(gl.rename, name, body.name)
+
+    @app.post("/glossaries/{name}/duplicate", status_code=201)
+    def duplicate_glossary(name: str, body: NameBody):
+        return _gl(gl.duplicate, name, body.name)
+
+    @app.post("/glossaries/{name}/export")
+    def export_glossary(name: str, body: PathBody):
+        g = _gl(gl.load, name)
+        out = Path(body.path)
+        fmt = out.suffix.lower().lstrip(".")
+        if fmt not in gl.FORMATS:
+            raise HTTPException(400, "저장 형식은 .json, .csv, .txt 중 하나입니다")
+        out.write_text(gl.render(g, fmt), encoding="utf-8")
+        return {"written": str(out)}
 
     @app.delete("/glossaries/{name}")
     def delete_glossary(name: str):
-        _glossary_file(name).unlink(missing_ok=True)
+        _gl(gl.delete, name)
         return {"ok": True}
+
+    @app.get("/jobs/{key}/glossary")
+    def job_glossary(key: str):
+        return glossary_status(load_options(_job_or_404(key)))
+
+    @app.post("/jobs/{key}/glossary/attach")
+    def attach_job_glossary(key: str, body: NameBody):
+        """Link one more named glossary to the job; the change shows up as "glossary changed"."""
+        job = _job_or_404(key)
+        if mgr.busy(key):
+            raise HTTPException(409, "job is busy")
+        _gl(gl.load, body.name)
+        opts = load_options(job)
+        if body.name not in opts.glossary_names:
+            opts.glossary_names.append(body.name)
+            save_options(job, opts)
+        return glossary_status(opts)
+
+    @app.post("/jobs/{key}/glossary/refresh", status_code=202)
+    def refresh_job_glossary(key: str):
+        """Rebuild the job's glossary from its named glossaries (keeping edits made for this job)
+        and run again: only the stages the change affects run (translation, or STT if hints changed)."""
+        job = _job_or_404(key)
+        opts = load_options(job)
+        if not opts.glossary_names:
+            raise HTTPException(400, "이 작업은 이름 붙은 용어집을 쓰지 않습니다")
+        opts.glossary, opts.glossary_base = rebuild_glossary(opts)
+        try:
+            st = mgr.submit_run(job.video, opts, None, profile_id=opts.translate.profile_id)
+        except EngineError as e:
+            raise HTTPException(400, str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(409, str(e)) from e
+        return st.public()
 
     return app
 

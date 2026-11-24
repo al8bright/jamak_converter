@@ -48,6 +48,7 @@ def fake_translation(lines, opts, job, progress=None, cancel=None, only_ids=None
 def client(jamak_home, monkeypatch):
     monkeypatch.setattr(jobs_mod, "Pipeline", FakePipeline)
     monkeypatch.setattr(jobs_mod, "run_translation", fake_translation)
+    monkeypatch.setattr("jamak.models.require_stt", lambda model_id: None)  # no models in the test home
     from jamak.api.server import create_app
 
     with TestClient(create_app(token="")) as c:
@@ -150,8 +151,19 @@ def test_glossary_crud(client):
     assert client.get("/glossaries").json() == []
     r = client.put("/glossaries/my show", json={"entries": [{"ja": "ユウキ", "ko": "유키"}]})
     assert r.status_code == 200
-    assert client.get("/glossaries").json() == ["my show"]
+    assert [g["name"] for g in client.get("/glossaries").json()] == ["my show"]
     assert client.get("/glossaries/my show").json()["entries"][0]["ko"] == "유키"
     assert client.put("/glossaries/..%2Fevil", json={"entries": []}).status_code in (400, 404)
     client.delete("/glossaries/my show")
     assert client.get("/glossaries").json() == []
+
+
+def test_job_needs_downloaded_model(jamak_home, monkeypatch, video):
+    monkeypatch.setattr(jobs_mod, "Pipeline", FakePipeline)
+    from jamak.api.server import create_app
+
+    with TestClient(create_app(token="")) as c:
+        r = c.post("/jobs", json={"video_path": str(video), "options": {"stt": {"model": "qwen3-asr-1.7b"}}})
+        assert r.status_code == 409 and "모델 관리" in r.json()["detail"]
+        setup = c.get("/setup").json()
+        assert "ready" in setup and "recommended_stt" in setup and setup["free_bytes"] > 0

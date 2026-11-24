@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, basename, clock, inTauri, type Line, parseTc, tc } from "./api";
+import { api, basename, clock, type GlossarySummary, inTauri, type JobGlossary, type Line, parseTc, tc } from "./api";
 import { useApp } from "./ctx";
 import { useJob } from "./job";
 import { Icon, ICONS, Modal, Note, Page, useToast } from "./ui";
@@ -34,7 +34,14 @@ export function Review({ jobKey }: { jobKey?: string }) {
   const [retrProfile, setRetrProfile] = useState<number | null>(null);
   const [exported, setExported] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [jobGlossary, setJobGlossary] = useState<JobGlossary | null>(null);
+  const [addTerm, setAddTerm] = useState<string | null>(null);
   const [toast, flash] = useToast();
+
+  const loadGlossary = useCallback(async () => {
+    if (!jobKey) return;
+    try { setJobGlossary(await api.get<JobGlossary>(`/jobs/${jobKey}/glossary`)); } catch { setJobGlossary(null); }
+  }, [jobKey]);
 
   const loadLines = useCallback(async () => {
     if (!jobKey) return;
@@ -49,15 +56,17 @@ export function Review({ jobKey }: { jobKey?: string }) {
 
   const onFinish = useCallback((status: string) => {
     loadLines();
+    loadGlossary();
     refreshJobs();
     if (status === "done") flash("다시 번역했습니다.");
     if (status === "error") flash("다시 번역하지 못했습니다. 진행 화면에서 오류를 확인하세요.", true);
-  }, [loadLines, refreshJobs, flash]);
+  }, [loadLines, loadGlossary, refreshJobs, flash]);
   const { detail, live, missing, reload } = useJob(jobKey, onFinish);
 
   useEffect(() => {
     loadLines();
-  }, [loadLines]);
+    loadGlossary();
+  }, [loadLines, loadGlossary]);
 
   const exportKey = (detail?.meta.last_export ?? []).join("|");
   useEffect(() => setExported(exportKey ? exportKey.split("|") : []), [exportKey]);
@@ -154,6 +163,21 @@ export function Review({ jobKey }: { jobKey?: string }) {
     }
   }
 
+  async function refreshGlossary() {
+    try {
+      await api.post(`/jobs/${jobKey}/glossary/refresh`);
+      await refreshJobs();
+      go({ kind: "progress", key: jobKey });
+    } catch (e) {
+      flash(`다시 번역을 시작하지 못했습니다: ${(e as Error).message}`, true);
+    }
+  }
+
+  function startAddTerm() {
+    const sel = window.getSelection()?.toString().replace(/\s+/g, " ").trim() ?? "";
+    setAddTerm(sel.slice(0, 40));
+  }
+
   const jobFormats = [...out.formats.map((f) => f.toUpperCase()), ...(out.dual_ass ? ["이중 ASS"] : [])].join(" + ") || "—";
 
   return (
@@ -186,6 +210,10 @@ export function Review({ jobKey }: { jobKey?: string }) {
             <span className="sr-only">원문 또는 번역 검색</span>
             <input type="search" placeholder="원문·번역에서 찾기" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} />
           </label>
+          <button className="btn sm" onMouseDown={(e) => e.preventDefault()} onClick={startAddTerm}
+            title="원문에서 단어를 드래그해 고른 뒤 누르면 그 단어가 채워집니다">
+            <Icon d={ICONS.book} size={13} /> 용어집에 추가
+          </button>
           <div role="group" aria-label="필터" className="filters">
             <button className="chip" aria-pressed={filter === "all"} onClick={() => { setFilter("all"); setPage(0); }}>전체 {lines.length}</button>
             <button className="chip warn" aria-pressed={filter === "long"} onClick={() => { setFilter("long"); setPage(0); }}>길이 초과 {counts.long}</button>
@@ -222,6 +250,16 @@ export function Review({ jobKey }: { jobKey?: string }) {
       </div>
 
       {source !== "ko" && <Note tone="warn">아직 번역 전입니다. 원문만 보여 줍니다.</Note>}
+      {jobGlossary?.changed && !busy && (
+        <div role="note" className="note warn" style={{ alignItems: "center" }}>
+          <Icon d={ICONS.alert} size={15} />
+          <span className="grow">
+            용어집이 바뀌었습니다 ({jobGlossary.names.join(", ")}). 이 작업은 만들 때의 용어집으로 번역했습니다.
+            {jobGlossary.missing.length > 0 && ` 지워진 용어집: ${jobGlossary.missing.join(", ")}.`}
+          </span>
+          <button className="btn sm" onClick={refreshGlossary}>번역 다시 하기</button>
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="t lines">
@@ -284,6 +322,11 @@ export function Review({ jobKey }: { jobKey?: string }) {
         <button className="btn danger" disabled={busy} onClick={() => setConfirmDelete(true)}>작업 지우기</button>
       </section>
 
+      {addTerm !== null && jobKey && (
+        <AddTermModal jobKey={jobKey} initial={addTerm} jobNames={jobGlossary?.names ?? []} defaultName={name.replace(/\.[^.]+$/, "").slice(0, 40)}
+          onClose={() => setAddTerm(null)}
+          onAdded={(msg) => { setAddTerm(null); loadGlossary(); flash(msg); }} />
+      )}
       {confirmDelete && (
         <Modal title="작업을 지울까요?" onClose={() => setConfirmDelete(false)} actions={<>
           <button className="btn" onClick={() => setConfirmDelete(false)}>취소</button>
@@ -299,6 +342,62 @@ export function Review({ jobKey }: { jobKey?: string }) {
       )}
       {toast}
     </Page>
+  );
+}
+
+function AddTermModal({ jobKey, initial, jobNames, defaultName, onClose, onAdded }: {
+  jobKey: string; initial: string; jobNames: string[]; defaultName: string; onClose: () => void; onAdded: (msg: string) => void;
+}) {
+  const [all, setAll] = useState<GlossarySummary[]>([]);
+  const [ja, setJa] = useState(initial);
+  const [ko, setKo] = useState("");
+  const [note, setNote] = useState("");
+  const [hint, setHint] = useState(false);
+  const [target, setTarget] = useState(jobNames[0] ?? "__new");
+  const [newName, setNewName] = useState(defaultName);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.get<GlossarySummary[]>("/glossaries").then(setAll); }, []);
+
+  const name = target === "__new" ? newName.trim() : target;
+  async function add() {
+    try {
+      await api.post(`/glossaries/${encodeURIComponent(name)}/entries`, { entries: [{ ja: ja.trim(), ko: ko.trim(), note: note.trim(), hint }] });
+      if (!jobNames.includes(name)) await api.post(`/jobs/${jobKey}/glossary/attach`, { name });
+      onAdded(`“${ja.trim()}=${ko.trim()}”을(를) “${name}”에 넣었습니다. 반영하려면 번역 다시 하기를 누르세요.`);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return (
+    <Modal title="용어집에 추가" onClose={onClose} actions={<>
+      <button className="btn" onClick={onClose}>취소</button>
+      <button className="btn primary" disabled={!ja.trim() || !ko.trim() || !name} onClick={add}>추가</button>
+    </>}>
+      <div className="grid2">
+        <label className="field">일본어<input className="input" lang="ja" value={ja} data-autofocus={initial ? undefined : true} onChange={(e) => setJa(e.target.value)} /></label>
+        <label className="field">한국어<input className="input" value={ko} data-autofocus={initial ? true : undefined} onChange={(e) => setKo(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && ja.trim() && ko.trim() && name && add()} /></label>
+      </div>
+      <label className="field">메모 (선택)<input className="input" value={note} placeholder="말투, 성별 등" onChange={(e) => setNote(e.target.value)} /></label>
+      <label className="check">
+        <input type="checkbox" checked={hint} onChange={(e) => setHint(e.target.checked)} />
+        <span className="check-text"><b>음성 인식 힌트로도 쓰기</b><span>자주 나오는 이름이면 켜세요. 켜면 다시 할 때 음성 인식부터 다시 합니다.</span></span>
+      </label>
+      <label className="field">
+        넣을 용어집
+        <select className="input" value={target} onChange={(e) => setTarget(e.target.value)}>
+          {jobNames.map((n) => <option key={n} value={n}>{n} (이 작업)</option>)}
+          {all.filter((g) => !jobNames.includes(g.name)).map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+          <option value="__new">새 용어집 만들기…</option>
+        </select>
+      </label>
+      {target === "__new" && (
+        <label className="field">새 용어집 이름<input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} /></label>
+      )}
+      {!jobNames.includes(name) && name && <p className="small muted">“{name}”을(를) 이 작업의 용어집으로 붙입니다.</p>}
+      {error && <p className="small err-fg" role="alert">{error}</p>}
+    </Modal>
   );
 }
 
@@ -343,7 +442,7 @@ function Row({ line, maxChars, picked, disabled, onPick, onSave }: {
       <td className="ja" lang="ja">{line.ja}</td>
       <td style={{ padding: "4px 6px" }}>
         <span className="ko-cell">
-          <textarea aria-label={`${line.id}번 줄 번역`} rows={Math.max(1, Math.ceil(ko.length / 30))} value={ko}
+          <textarea aria-label={`${line.id}번 줄 번역`} rows={1} value={ko}
             className={issue ? "warn" : failed ? "err" : undefined} disabled={disabled}
             placeholder={refused ? "서비스가 이 줄의 번역을 거절했습니다" : "번역이 비어 있습니다"}
             onChange={(e) => setKo(e.target.value)} onBlur={commit}

@@ -82,7 +82,79 @@ def test_existing_verified_file_is_kept(tmp_path, monkeypatch):
 
 
 def test_setup_status_lists_components(jamak_home):
+    from jamak import models
+
     m = ins.SetupManager()
-    ids = [s["id"] for s in m.status()]
-    assert ids == ["ffmpeg", "cuda", "llama", "whisper", "llm"]
-    assert all(s["status"] in ("present", "missing") for s in m.status())
+    st = m.status()
+    assert [s["id"] for s in st] == [s.id for s in models.SPECS]
+    assert {"large-v3", "large-v3-turbo", "kotoba-whisper-v2.0", "qwen3-asr-1.7b", "llm"} <= {s["id"] for s in st}
+    assert all(s["status"] in ("present", "missing") for s in st)
+    qwen = next(s for s in st if s["id"] == "qwen3-asr-1.7b")
+    assert qwen["requires"] == ["torch"] and qwen["missing_requires"] == ["torch"]
+
+
+def test_dependencies_follow_gpu():
+    assert ins.with_dependencies(["large-v3"], gpu=True) == ["cuda", "large-v3"]
+    assert ins.with_dependencies(["large-v3"], gpu=False) == ["large-v3"]
+    assert ins.with_dependencies(["qwen3-asr-1.7b", "llm"], gpu=True) == ["torch", "llama", "qwen3-asr-1.7b", "llm"]
+
+
+def test_recommended_stt_by_vram():
+    assert ins.recommended_stt(24) == "large-v3"
+    assert ins.recommended_stt(6) == "large-v3-turbo"
+    assert ins.recommended_stt(None) == "large-v3-turbo"
+
+
+def test_install_rejects_unknown(jamak_home):
+    with pytest.raises(ValueError):
+        ins.SetupManager().install(["nope"])
+
+
+def test_remove_protects_dependencies_and_ffmpeg(jamak_home, monkeypatch):
+    m = ins.SetupManager()
+    with pytest.raises(ValueError, match="지울 수 없"):
+        m.remove("ffmpeg")
+    monkeypatch.setattr(ins, "has_nvidia_gpu", lambda: True)
+    monkeypatch.setattr(ins.HfModelComponent, "present", lambda self: self.id == "large-v3")
+    with pytest.raises(ValueError, match="Whisper large-v3"):
+        m.remove("cuda")
+
+
+def fake_model(model_id):
+    from jamak import models
+
+    s = models.BY_ID[model_id]
+    snap = models.repo_dir(models.hf_cache_dir(s), s.repos[0]) / "snapshots" / "abc"
+    snap.mkdir(parents=True)
+    (snap / "model.bin").write_bytes(b"x")
+    return snap
+
+
+def test_remove_deletes_model_folder(jamak_home):
+    snap = fake_model("large-v3-turbo")
+    assert ins.present("large-v3-turbo")
+    with pytest.raises(ValueError, match="하나는 있어야"):  # the only speech-recognition model
+        ins.SetupManager().remove("large-v3-turbo")
+    fake_model("large-v3")
+    ins.SetupManager().remove("large-v3-turbo")
+    assert not ins.present("large-v3-turbo") and not snap.exists()
+
+
+def test_kotoba_alignment_heads_fixed(tmp_path):
+    import json
+
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"alignment_heads": [[25, 3]], "lang_ids": [1]}), encoding="utf-8")
+    assert ins.fix_alignment_heads("kotoba-whisper-v2.0", tmp_path)
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    assert data["alignment_heads"] == [[1, h] for h in range(20)] and data["lang_ids"] == [1]
+    assert not ins.fix_alignment_heads("kotoba-whisper-v2.0", tmp_path)  # already fixed
+    assert not ins.fix_alignment_heads("large-v3", tmp_path)
+
+
+def test_runtime_files_are_packaged():
+    lock = ins.runtime_file("qwen-requirements.lock").read_text(encoding="utf-8")
+    assert "qwen-asr==0.0.6" in lock and "torch==" in lock and "--hash=sha256:" in lock
+    pkgs = [ln.split("==")[0] for ln in lock.splitlines() if "==" in ln and not ln.startswith("#")]
+    assert "gradio" not in pkgs and "vllm" not in pkgs
+    assert ins.runtime_file("qwen_asr_worker.py").exists()

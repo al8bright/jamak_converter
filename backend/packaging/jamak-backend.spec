@@ -15,7 +15,9 @@ a = Analysis(
     ["entry.py"],
     pathex=["../src"],
     binaries=collect_dynamic_libs("ctranslate2") + collect_dynamic_libs("onnxruntime"),
-    datas=collect_data_files("faster_whisper") + collect_data_files("pysubs2"),
+    # runtime/: the Qwen3-ASR worker script and its lock file run in the separate PyTorch environment
+    datas=collect_data_files("faster_whisper") + collect_data_files("pysubs2")
+    + collect_data_files("jamak.runtime", include_py_files=True, includes=["*.py", "*.lock", "*.in"]),
     hiddenimports=hidden,
     excludes=[
         "torch", "torchaudio", "demucs", "nvidia", "tkinter", "matplotlib", "IPython",

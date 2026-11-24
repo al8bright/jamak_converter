@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { api, basename, clock, kindBadge, type LiveState, mmss, type Stage, STAGE_NAMES, STAGES, type Usage } from "./api";
+import { api, basename, clock, isCloud, kindBadge, type LiveState, mmss, type Stage, STAGE_NAMES, STAGES, type Usage } from "./api";
 import { useApp } from "./ctx";
 import { type JobDetail, type ProgressEvent, type StageState, useJob } from "./job";
 import { KindBadge, Note, Page } from "./ui";
@@ -31,7 +31,7 @@ export function Progress({ jobKey }: { jobKey?: string }) {
   const running = !!live && (live.status === "running" || live.status === "queued");
   const engine = live?.engine ?? null;
   const t = detail.options.translate;
-  const cloud = engine ? engine.cloud : t.mode === "anthropic" || t.mode === "gemini";
+  const cloud = engine ? engine.cloud : isCloud(t.mode);
   const kb = kindBadge(engine?.kind ?? t.mode);
   const profileName = engine?.profile_name ?? t.profile_name ?? "—";
   const overall = running ? live!.progress : live?.status === "done" || (!live && detail.meta.stages.translate) ? 1 : live?.progress ?? 0;
@@ -179,8 +179,14 @@ function UsageCard({ usage }: { usage: Usage | null }) {
     <section aria-labelledby="use-h" className="card" style={{ borderColor: "var(--s-line)", gap: 8 }}>
       <h2 id="use-h">API 사용량</h2>
       <dl className="usage">
-        <div><dt>입력 토큰</dt><dd>{n(usage?.prompt_tokens)}</dd></div>
-        <div><dt>출력 토큰</dt><dd>{n(usage?.completion_tokens)}</dd></div>
+        {usage?.characters != null ? (
+          <div><dt>보낸 글자 수</dt><dd>{n(usage.characters)}</dd></div>
+        ) : (
+          <>
+            <div><dt>입력 토큰</dt><dd>{n(usage?.prompt_tokens)}</dd></div>
+            <div><dt>출력 토큰</dt><dd>{n(usage?.completion_tokens)}</dd></div>
+          </>
+        )}
         <div><dt>요청</dt><dd>{usage?.batches_total ? `${usage.batches_done} / ${usage.batches_total}` : n(usage?.requests)}</dd></div>
         <div><dt>예상 비용</dt><dd>{usage?.cost_usd != null ? `≈ $${usage.cost_usd.toFixed(2)}` : "—"}</dd></div>
       </dl>
@@ -237,7 +243,7 @@ function LogCard({ log, live, steps }: { log: ProgressEvent[]; live: LiveState |
   const shown = lines.slice(-40);
   return (
     <section aria-labelledby="log-h" className="log">
-      <h2 id="log-h">LOG · 로그</h2>
+      <h2 id="log-h"><span className="tracked">LOG</span> · 로그</h2>
       {shown.length === 0 ? <p className="small muted" style={{ margin: 0 }}>이 세션에서 실행한 기록이 여기에 표시됩니다.</p> : (
         <ol>
           {shown.map((l, i) => <li key={i}><time>{clock(l.t, true)}</time> {l.m}</li>)}

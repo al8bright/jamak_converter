@@ -106,6 +106,7 @@ export interface Usage {
   requests: number; retries: number; splits: number; failed_lines: number; refused_lines: number;
   prompt_tokens: number; completion_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
   cost_usd: number | null; batches_total: number; batches_done: number;
+  characters?: number; // DeepL / Papago bill by characters
 }
 
 export interface LiveState {
@@ -160,7 +161,10 @@ export interface Line {
   flags: string[];
 }
 
-export interface GlossaryEntry { ja: string; ko: string; note: string }
+export interface GlossaryEntry { ja: string; ko: string; note: string; hint?: boolean }
+export interface GlossarySummary { name: string; count: number; hints: number; aliases: string[]; updated: string }
+export interface Glossary { name: string; aliases: string[]; entries: GlossaryEntry[]; updated: string }
+export interface JobGlossary { names: string[]; changed: boolean; missing: string[]; count: number }
 
 export interface Options {
   audio: { track: number | null };
@@ -176,6 +180,8 @@ export interface Options {
   };
   output: { formats: string[]; include_ja: boolean; dual_ass: boolean; out_dir: string | null; ko_max_line_chars: number };
   glossary: GlossaryEntry[];
+  glossary_names: string[];
+  glossary_base: GlossaryEntry[];
 }
 
 export interface SystemInfo {
@@ -189,6 +195,7 @@ export interface SystemInfo {
   llm_models: { name: string; path: string; size_gb: number }[];
   default_llm: string | null;
   stt_models: string[];
+  stt_installed: string[];
   separation_available: boolean;
 }
 
@@ -200,14 +207,25 @@ export interface Probe {
   tracks: { index: number; codec: string; language: string | null; title: string | null; channels: number; default: boolean }[];
 }
 
-export type ProfileKind = "local_managed" | "local_external" | "anthropic" | "gemini";
+/** Cloud services; the list and their details come from GET /settings/providers (backend core/providers.py). */
+export const CLOUD_KINDS = ["anthropic", "gemini", "openai", "deepseek", "xai", "mistral", "openrouter", "deepl", "papago"] as const;
+export type CloudKind = (typeof CLOUD_KINDS)[number];
+export type ProfileKind = "local_managed" | "local_external" | CloudKind;
+export const isCloud = (k: string | null | undefined): k is CloudKind => !!k && (CLOUD_KINDS as readonly string[]).includes(k);
+
+export interface ProviderInfo {
+  id: CloudKind; name: string; family: "anthropic" | "gemini" | "openai" | "deepl" | "papago";
+  key_url: string; pricing_url: string; model_hint: string; lists_models: boolean; llm: boolean;
+  key_parts: string[]; key_note: string; tags: string[]; env: string[];
+}
 
 export interface ProfileOptions {
   batch_size: number; context_lines: number; parallel: number | null; gpu_layers: number;
   effort: "low" | "medium" | "high" | null; refusal: "local" | "mark"; temperature: number | null;
+  fallback_profile_id?: number | null;
 }
 
-export interface ApiKey { id: number; provider: "anthropic" | "gemini" | "openai_compat"; label: string; last4: string; created_at: string }
+export interface ApiKey { id: number; provider: CloudKind | "openai_compat"; label: string; last4: string; created_at: string }
 
 export interface Profile {
   id: number; name: string; kind: ProfileKind; model: string | null; base_url: string | null; api_key_id: number | null;
@@ -229,11 +247,12 @@ export interface Check {
 }
 
 export const KIND_LABEL: Record<ProfileKind, string> = {
-  local_managed: "로컬 내장", local_external: "외부 서버", anthropic: "Claude", gemini: "Gemini",
+  local_managed: "로컬 내장", local_external: "외부 서버", anthropic: "Claude", gemini: "Gemini", openai: "OpenAI",
+  deepseek: "DeepSeek", xai: "Grok", mistral: "Mistral", openrouter: "OpenRouter", deepl: "DeepL", papago: "Papago",
 };
 
 export function kindBadge(kind: ProfileKind | EngineSummary["kind"]): { text: string; cloud: boolean } {
-  if (kind === "anthropic" || kind === "gemini") return { text: "클라우드", cloud: true };
+  if (isCloud(kind)) return { text: "클라우드", cloud: true };
   if (kind === "local_external" || kind === "external") return { text: "외부 서버", cloud: false };
   return { text: "로컬", cloud: false };
 }
@@ -243,10 +262,14 @@ export function profileDetail(p: Profile, llmName?: string | null): string {
   if (p.kind === "local_managed") return `llama-server · ${p.model ? basename(p.model) : llmName ?? "기본 GGUF"}`;
   if (p.kind === "local_external") return `${p.base_url ?? ""} · ${p.model || "local"}`;
   const key = p.key ? `키 ••••${p.key.last4}` : "등록된 키 없음";
-  return `${p.model ?? "모델 미정"} · ${key} · 동시 요청 ${o.parallel ?? 4}`;
+  const model = p.kind === "deepl" || p.kind === "papago" ? "번역 API" : p.model ?? "모델 미정";
+  return `${model} · ${key} · 동시 요청 ${o.parallel ?? 4}`;
 }
 
-export const PROVIDER_NAME: Record<string, string> = { anthropic: "Anthropic", gemini: "Google", openai_compat: "외부 서버" };
+export const PROVIDER_NAME: Record<string, string> = {
+  anthropic: "Anthropic", gemini: "Google", openai: "OpenAI", deepseek: "DeepSeek", xai: "xAI", mistral: "Mistral AI",
+  openrouter: "OpenRouter", deepl: "DeepL", papago: "NAVER Papago", openai_compat: "외부 서버",
+};
 
 // ------------------------------------------------------------------ formatting
 

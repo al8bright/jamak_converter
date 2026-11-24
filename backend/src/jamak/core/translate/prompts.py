@@ -7,7 +7,7 @@ import json
 from jamak.config import GlossaryEntry
 
 # bump when the prompt or the response format changes: it is part of the translate cache key
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: local engines get only the glossary entries that occur in the batch
 
 SYSTEM_PROMPT = """\
 You are a professional Japanese-to-Korean subtitle translator for anime and TV drama.

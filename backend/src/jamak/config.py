@@ -89,6 +89,7 @@ class GlossaryEntry(BaseModel):
     ja: str
     ko: str
     note: str = ""
+    hint: bool = False  # also give this term to speech recognition (main characters, frequent names)
 
 
 class AudioOptions(BaseModel):
@@ -102,14 +103,16 @@ class SeparateOptions(BaseModel):
 
 
 class SttOptions(BaseModel):
-    engine: Literal["faster-whisper"] = "faster-whisper"
-    model: str = "large-v3"
+    engine: str = "auto"  # decided by the model (models.py); kept for older options.json files
+    model: str = "large-v3"  # an id from models.py (large-v3, large-v3-turbo, kotoba-whisper-v2.0, qwen3-asr-1.7b)
     device: Literal["cuda", "cpu", "auto"] = "auto"
     compute_type: str = "auto"  # float16 on cuda, int8 on cpu
     beam_size: int = 5
     vad: bool = True
     vad_min_silence_ms: int = 500
     vad_threshold: float = 0.5
+    batch_size: int = 8  # Qwen3-ASR: speech chunks per GPU batch (VRAM grows with it)
+    max_chunk: float = 25.0  # Qwen3-ASR: longest speech chunk in seconds (forced aligner limit is 300)
 
 
 class FilterOptions(BaseModel):
@@ -153,7 +156,7 @@ class TranslateOptions(BaseModel):
     and is excluded from every dump (options.json, API responses).
     """
 
-    mode: Literal["managed", "external", "anthropic", "gemini"] = "managed"
+    mode: Literal["managed", "external", "anthropic", "gemini", "openai", "deepseek", "xai", "mistral", "openrouter", "deepl", "papago"] = "managed"  # cloud ids: core/providers.py
     profile_id: int | None = None
     profile_name: str | None = None
     model_path: str | None = None  # managed: GGUF path (None = default_llm_path())
@@ -164,6 +167,7 @@ class TranslateOptions(BaseModel):
     api_key: str | None = Field(default=None, exclude=True)
     effort: Literal["low", "medium", "high"] | None = None  # anthropic only; None = model default
     refusal: Literal["local", "mark"] = "local"  # cloud refusal: retranslate those lines locally, or only flag
+    fallback_profile_id: int | None = None  # cloud profile to finish with when this service fails
     batch_size: int = 25
     context_lines: int = 5
     temperature: float = 0.2
@@ -191,4 +195,7 @@ class PipelineOptions(BaseModel):
     songs: SongOptions = Field(default_factory=SongOptions)
     translate: TranslateOptions = Field(default_factory=TranslateOptions)
     output: OutputOptions = Field(default_factory=OutputOptions)
-    glossary: list[GlossaryEntry] = Field(default_factory=list)
+    glossary: list[GlossaryEntry] = Field(default_factory=list)  # what this job uses (snapshot)
+    glossary_names: list[str] = Field(default_factory=list)  # named glossaries it was built from
+    # merge of `glossary_names` when the job was created: `glossary` minus this = edits made for this job only
+    glossary_base: list[GlossaryEntry] = Field(default_factory=list)

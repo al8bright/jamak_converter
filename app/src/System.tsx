@@ -60,7 +60,7 @@ export function System() {
               {(c.fix || c.action) && (
                 <span className="check-fix">
                   {c.fix && <span>{c.fix}</span>}
-                  {c.action === "setup" && <button className="btn sm" onClick={() => go({ kind: "setup" })}>설치 화면 열기</button>}
+                  {c.action === "setup" && <button className="btn sm" onClick={() => go({ kind: "models" })}>모델 관리 열기</button>}
                   {c.action === "engine" && <button className="btn sm" onClick={() => go({ kind: "engine" })}>번역 엔진 설정</button>}
                 </span>
               )}

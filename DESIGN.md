@@ -16,18 +16,18 @@
 
 | 요소 | 의미 | 모양 |
 |---|---|---|
-| `「 」` 꺾쇠 | 일본어 인용 괄호. 대사를 감싸는 틀 | 왼쪽 위·오른쪽 아래 두 모서리. 주 네온 선, 글로우 |
+| `「 」` 꺾쇠 | 일본어 인용 괄호. 대사를 감싸는 틀 | 왼쪽 위·오른쪽 아래 두 모서리. `brand.pink` 선, 글로우 |
 | `字` → `자` | 일본어 자막(字幕)이 한국어 자막(자막)이 됨 | 가운데 글자. Noto Sans JP 900 / Noto Sans KR 900 |
-| 자막 막대 | 화면 아래 자막 한 줄 | 글자 아래 가로 막대. 보조 네온, 글로우 |
+| 자막 막대 | 화면 아래 자막 한 줄 | 글자 아래 가로 막대. `brand.cyan`, 글로우 |
 
 - 워드마크: `JAMAK` — Chakra Petch 700, 대문자, 자간 `0.14em`(사이드바) / `0.08em`(대형).
-- 태그라인: `字幕 → 자막` (字幕은 Noto Sans JP, 화살표는 주 네온 색).
+- 태그라인: `字幕 → 자막` (字幕은 Noto Sans JP, 화살표는 `brand.pink`).
 - 한 줄 설명: "일본어 음성을 이 PC에서 한국어 자막으로 바꿉니다"
 
 ### 1.2 기하 (32 × 32 기준 좌표)
 
 ```
-꺾쇠 path : M3 11V3h8  M29 21v8h-8     stroke = 주 네온, stroke-linecap = square
+꺾쇠 path : M3 11V3h8  M29 21v8h-8     stroke = brand.pink, stroke-linecap = square
 선 두께   : 2.0 (200px) · 2.4 (40~64px) · 2.6 (30px 사이드바)
 글자      : 가로 가운데, 세로는 아래 13% 를 막대 자리로 비운 영역의 가운데
            글자 크기 ≈ 마크 크기의 52% (200px → 104px, 30px → 16px)
@@ -48,7 +48,7 @@
 |---|---|---|
 | `jm-ja` | 字 | 0–44% 보임 → 47–94% 숨김 → 97–100% 보임 |
 | `jm-ko` | 자 | `jm-ja`의 반대 |
-| `jm-gh` | 글리치 잔상 2겹 (주 네온 자, 보조 네온 字) | 44–48%, 94–98%에만 나타남. `clip-path: inset()`으로 가로 띠를 잘라 좌우로 3–6% 흔듦 |
+| `jm-gh` | 글리치 잔상 2겹 (`brand.pink` 자, `brand.cyan` 字) | 44–48%, 94–98%에만 나타남. `clip-path: inset()`으로 가로 띠를 잘라 좌우로 3–6% 흔듦 |
 | `jm-bar` | 자막 막대 | 0% 0 → 14–42% 꽉 참 → 47% 0 → 61–92% 꽉 참 → 97% 0. `transform: scaleX`, 기준점 왼쪽 |
 | `jm-flick` | 마크 전체 | 전환 순간(44–46%, 94–96%)에 opacity 0.35~0.7로 깜빡임 |
 
@@ -90,8 +90,8 @@
 |---|---|
 | 판 | 64 × 64, 모서리 반경 14, `brand.night` |
 | 꺾쇠 | 두께 7, `brand.pink` |
-| 첫 줄 (원문 자리) | x19 y27, 26 × 5.5, `brand.ink` |
-| 둘째 줄 (번역 자리) | x24 y36, 16 × 5.5, `brand.cyan` |
+| 첫 줄 (원문 자리) | x19 y27, 26 × 5.5, 모서리 `rx=1`, `brand.ink` |
+| 둘째 줄 (번역 자리) | x24 y36, 16 × 5.5, 모서리 `rx=1`, `brand.cyan` |
 | 확인한 크기 | 16 · 32 · 48 · 96px, 어두운·밝은 브라우저 탭 |
 
 - 원본: `docs/brand/favicon.svg`
@@ -202,6 +202,11 @@
   --ok-soft:   color-mix(in srgb, var(--ok) 10%, transparent);
   --warn-soft: color-mix(in srgb, var(--warn) 10%, transparent);
   --err-soft:  color-mix(in srgb, var(--err) 10%, transparent);
+  --ok-line:   color-mix(in srgb, var(--ok) 35%, transparent);
+  --warn-line: color-mix(in srgb, var(--warn) 40%, transparent);
+  --err-line:  color-mix(in srgb, var(--err) 45%, transparent);
+  --p-text:  0 0 12px color-mix(in srgb, var(--p) 55%, transparent);
+  --icon-fx: drop-shadow(0 0 4px color-mix(in srgb, var(--p) 80%, transparent));
 }
 ```
 
@@ -225,7 +230,7 @@
 | 본문 (한국어) | Noto Sans KR | 400 · 500 · 700 · 900 | 모든 UI 글자. 기본 13px, 행간 1.45 |
 | 일본어 원문 | Noto Sans JP | 500 · 900 | 원문 열(`lang="ja"`), 로고의 字 |
 | 숫자·경로·로그 | JetBrains Mono | 400 · 500 | 시간 코드, 파일 경로, 키, 로그, 푸터 계측 숫자 |
-| 영문 라벨 | Chakra Petch | 500 · 600 · 700 | 워드마크, 헤더의 영문 eyebrow(`HOME`, `SETTINGS`), 푸터 계측 라벨 |
+| 영문 라벨 | Chakra Petch | 600 · 700 | 워드마크, 헤더의 영문 eyebrow(`HOME`, `SETTINGS`), 푸터 계측 라벨 |
 
 ### 4.1 글꼴은 앱에 넣어서 배포한다
 
@@ -299,7 +304,7 @@ JetBrains Mono와 Chakra Petch에는 한글 글리프가 없다. 한글이 들�
 | 사이드바 (접힘) | 폭 68px, 아이콘 18px 아래 10px 라벨, 메뉴 높이 48px. 그룹명(작업·설정)은 그대로 표시 |
 | 헤더 | 최소 높이 50px, 패딩 6/16. 왼쪽 eyebrow + h1, 오른쪽 작업 버튼 |
 | 본문 인셋 | 좌우 여백 10px, 테두리 `lineHi`, 반경 6px, 바탕 `panel`, `pHalo` 빛. 내부 최대 폭 1120–1200px, 패딩 14/18/20 |
-| 푸터 모니터 | 최소 높이 30px, JetBrains Mono 11px. GPU · VRAM · CPU · RAM 막대(48 × 4px) + 백엔드 상태 + 하드웨어 이름 |
+| 푸터 모니터 | 최소 높이 30px, 11px. GPU · VRAM · CPU · RAM 막대(48 × 4px)와 숫자는 JetBrains Mono, 백엔드 상태 문구("백엔드 연결됨 · 대기 중")는 Noto Sans KR, 하드웨어 이름은 JetBrains Mono |
 
 ### 5.3 구성 요소 색
 
@@ -318,11 +323,19 @@ JetBrains Mono와 Chakra Petch에는 한글 글리프가 없다. 한글이 들�
 | 푸터 계측 | 트랙 `line` | GPU·CPU `p`, VRAM·RAM `s`, 85% 이상 `warn` | — | `0 0 6px` 같은 색 |
 | 링크·시간 코드 | — | `s` | — | — |
 
+### 5.4 검수 표의 번역 편집칸
+
+- 편집칸은 **내용이 모두 보이는 높이**로 그린다. 한 줄 높이로 고정해서 긴 번역을 자르지 않는다. 길이 초과로 표시된 줄이 바로 검수자가 읽어야 하는 줄이기 때문이다.
+- 앱에서는 `field-sizing: content`(WebView2 지원)나 입력할 때마다 `scrollHeight`로 높이를 맞춘다. 목업은 글자 수 22자마다 한 줄씩 늘리는 근사치를 쓴다.
+- 최소 높이는 30px이고, 사용자가 세로로 늘릴 수 있다(`resize: vertical`).
+- 글자 수는 편집칸 오른쪽 아래에 붙이고, 길이를 넘으면 테두리와 글자 수를 `warn` 색으로 바꾼다.
+
 ---
 
 ## 6. 접근성
 
-- 글자 대비는 3.5절 표대로 모두 4.5:1 이상이다.
+- 글자 대비는 3.6절 표대로 모두 4.5:1 이상이다.
+- 상태는 색만으로 알리지 않고 항상 글자를 함께 쓴다(3.3절 규칙 4).
 - `prefers-reduced-motion: reduce`이면 로고·상태 점 애니메이션을 모두 끈다.
 - 아이콘만 있는 버튼에는 `aria-label`을 붙이고(사이드바 접기 등), 장식용 SVG에는 `aria-hidden="true"`를 붙인다.
 - 일본어 원문에는 `lang="ja"`를 붙여 읽기 프로그램과 글꼴이 맞게 처리되게 한다.
@@ -344,7 +357,7 @@ JetBrains Mono와 Chakra Petch에는 한글 글리프가 없다. 한글이 들�
 | 7 · 브랜드 | `Brand.html` | `png/brand.png` |
 | 팔레트 비교 | — | `png/main--acid.png`, `png/main--ice.png`, `png/main--blade.png` |
 
-- HTML은 서버 없이 브라우저로 바로 열린다(글꼴만 Google Fonts에서 받음). 같은 폴더의 `dc-lite.js`가 화면을 그린다.
+- HTML은 서버 없이 브라우저로 바로 열린다. 같은 폴더의 `dc-lite.js`가 화면을 그린다.
 - 화면 사이 링크, 사이드바 접기, 라디오·체크박스, 검수 줄 선택·편집, 번역 엔진 종류 전환이 실제로 동작한다.
 - 주소 끝에 값을 붙여 화면 변형을 볼 수 있다.
   - `?palette=seoul|acid|ice|blade`
@@ -362,7 +375,7 @@ JetBrains Mono와 Chakra Petch에는 한글 글리프가 없다. 한글이 들�
 |---|---|
 | `DESIGN.md` | 이 문서 |
 | `docs/brand/favicon.svg` | 파비콘·앱 아이콘 원본 (정적, 글자 없음) |
-| `docs/brand/logo-animated.svg` | 움직이는 로고 단독 SVG (서울 나이트 색, 폰트 의존) |
+| `docs/brand/logo-animated.svg` | 움직이는 로고 단독 SVG (브랜드 색 고정, 폰트 의존) |
 | `docs/brand/logo.png` | 로고 정지 화면 512 × 512 |
 | `docs/mockups/*.html` | 화면 목업 7개 |
 | `docs/mockups/dc-lite.js` | 목업 렌더러 |

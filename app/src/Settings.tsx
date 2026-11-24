@@ -1,15 +1,29 @@
 import { useEffect, useState } from "react";
 import {
-  api, type ApiKey, basename, KIND_LABEL, kindBadge, type Profile, profileDetail, type ProfileKind,
-  type ProfileOptions, PROVIDER_NAME,
+  api, type ApiKey, basename, type CloudKind, isCloud, kindBadge, type Profile, profileDetail,
+  type ProfileKind, type ProfileOptions, PROVIDER_NAME, type ProviderInfo,
 } from "./api";
 import { useApp } from "./ctx";
 import { Icon, ICONS, KindBadge, Modal, Note, Page, SettingsTabs, useToast } from "./ui";
 
-const KINDS: ProfileKind[] = ["local_managed", "local_external", "anthropic", "gemini"];
+type KindGroup = "local_managed" | "local_external" | "cloud";
+const GROUPS: { id: KindGroup; label: string }[] = [
+  { id: "local_managed", label: "로컬 내장" }, { id: "local_external", label: "외부 서버" }, { id: "cloud", label: "클라우드" },
+];
 const DEFAULT_OPTS: ProfileOptions = {
   batch_size: 25, context_lines: 5, parallel: null, gpu_layers: 99, effort: null, refusal: "local", temperature: null,
+  fallback_profile_id: null,
 };
+
+function openLink(url: string) {
+  api.post("/system/open-url", { url }).catch(() => {});
+}
+
+function useProviders(): ProviderInfo[] {
+  const [list, setList] = useState<ProviderInfo[]>([]);
+  useEffect(() => { api.get<ProviderInfo[]>("/settings/providers").then(setList).catch(() => {}); }, []);
+  return list;
+}
 
 interface Draft {
   id: number | null; name: string; kind: ProfileKind; model: string; base_url: string;
@@ -27,6 +41,7 @@ export function Settings() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [toast, flash] = useToast();
+  const providers = useProviders();
 
   const loadKeys = () => api.get<ApiKey[]>("/settings/api-keys").then(setKeys);
   useEffect(() => { loadKeys(); }, []);
@@ -80,11 +95,11 @@ export function Settings() {
               })}
             </div>
           </section>
-          <KeysCard keys={keys} reload={async () => { await loadKeys(); await refreshProfiles(); }} flash={flash} />
+          <KeysCard keys={keys} providers={providers} reload={async () => { await loadKeys(); await refreshProfiles(); }} flash={flash} />
         </div>
 
         {draft && (
-          <Editor key={draft.id ?? "new"} draft={draft} keys={keys} profiles={profiles} llmModels={sys?.llm_models ?? []}
+          <Editor key={draft.id ?? "new"} draft={draft} keys={keys} providers={providers} profiles={profiles} llmModels={sys?.llm_models ?? []}
             onSaved={async (id, msg) => {
               await refreshProfiles();
               const fresh = (await api.get<Profile[]>("/settings/translation-profiles")).find((p) => p.id === id);
@@ -102,21 +117,39 @@ export function Settings() {
 
 // ---------------------------------------------------------------------- API keys
 
-function KeysCard({ keys, reload, flash }: { keys: ApiKey[]; reload: () => Promise<void>; flash: (t: string, bad?: boolean) => void }) {
-  const [provider, setProvider] = useState<"anthropic" | "gemini">("anthropic");
+function KeysCard({ keys, providers, reload, flash }: {
+  keys: ApiKey[]; providers: ProviderInfo[]; reload: () => Promise<void>; flash: (t: string, bad?: boolean) => void;
+}) {
+  const [provider, setProvider] = useState<CloudKind>("anthropic");
   const [label, setLabel] = useState("");
-  const [secret, setSecret] = useState("");
+  const [parts, setParts] = useState<string[]>(["", ""]);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<ApiKey | null>(null);
+  const [checks, setChecks] = useState<Record<number, { ok: boolean; message: string } | "busy">>({});
+  const info = providers.find((p) => p.id === provider);
+  const partNames = info?.key_parts ?? ["API 키"];
+  const filled = partNames.every((_, i) => (parts[i] ?? "").trim().length >= 8);
+
+  async function check(k: ApiKey) {
+    setChecks((c) => ({ ...c, [k.id]: "busy" }));
+    try {
+      const r = await api.post<{ ok: boolean; message: string }>(`/settings/api-keys/${k.id}/check`);
+      setChecks((c) => ({ ...c, [k.id]: r }));
+    } catch (e) {
+      setChecks((c) => ({ ...c, [k.id]: { ok: false, message: (e as Error).message } }));
+    }
+  }
 
   async function save() {
     setBusy(true);
     try {
-      await api.post("/settings/api-keys", { provider, label: label.trim(), secret: secret.trim() });
-      setSecret("");
+      const secret = partNames.map((_, i) => (parts[i] ?? "").trim()).join("\n");
+      const k = await api.post<ApiKey>("/settings/api-keys", { provider, label: label.trim(), secret });
+      setParts(["", ""]);
       setLabel("");
       await reload();
-      flash("키를 저장했습니다.");
+      flash("키를 저장했습니다. 키를 확인합니다…");
+      check(k);
     } catch (e) {
       flash(`키를 저장하지 못했습니다: ${(e as Error).message}`, true);
     } finally {
@@ -130,41 +163,63 @@ function KeysCard({ keys, reload, flash }: { keys: ApiKey[]; reload: () => Promi
       {keys.length > 0 ? (
         <div className="table-wrap" style={{ background: "transparent" }}>
           <table className="t compact">
-            <thead><tr><th scope="col">제공자</th><th scope="col">이름</th><th scope="col">키</th><th scope="col">등록일</th><th scope="col"><span className="sr-only">삭제</span></th></tr></thead>
+            <thead><tr><th scope="col">제공자</th><th scope="col">이름</th><th scope="col">키</th><th scope="col">상태</th><th scope="col"><span className="sr-only">작업</span></th></tr></thead>
             <tbody>
-              {keys.map((k) => (
-                <tr key={k.id}>
-                  <td>{k.provider === "anthropic" ? "Anthropic" : k.provider === "gemini" ? "Google" : "외부 서버"}</td>
-                  <td>{k.label || "—"}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>••••{k.last4}</td>
-                  <td className="muted">{k.created_at.slice(0, 10)}</td>
-                  <td style={{ textAlign: "right" }}><button className="btn bare danger sm" onClick={() => setRemoving(k)}>삭제</button></td>
-                </tr>
-              ))}
+              {keys.map((k) => {
+                const c = checks[k.id];
+                return (
+                  <tr key={k.id}>
+                    <td>{PROVIDER_NAME[k.provider] ?? k.provider}</td>
+                    <td>{k.label || "—"}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>••••{k.last4}</td>
+                    <td className={`small ${c && c !== "busy" ? (c.ok ? "ok-fg" : "err-fg") : "muted"}`} role="status">
+                      {c === "busy" ? "확인하는 중…" : c ? c.message : `${k.created_at.slice(0, 10)} 등록`}
+                    </td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {k.provider !== "openai_compat" && <button className="btn bare sm" disabled={c === "busy"} onClick={() => check(k)}>키 확인</button>}
+                      <button className="btn bare danger sm" onClick={() => setRemoving(k)}>삭제</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : <p className="small muted" style={{ margin: 0 }}>등록된 키가 없습니다. 클라우드 번역을 쓰려면 키를 하나 저장하세요.</p>}
 
-      <form className="key-form" onSubmit={(e) => { e.preventDefault(); if (secret.trim()) save(); }}>
+      <form className="key-form" onSubmit={(e) => { e.preventDefault(); if (filled) save(); }}>
         <label className="field">
           제공자
-          <select className="input" value={provider} onChange={(e) => setProvider(e.target.value as "anthropic" | "gemini")}>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="gemini">Google (Gemini)</option>
+          <select className="input" value={provider} onChange={(e) => { setProvider(e.target.value as CloudKind); setParts(["", ""]); }}>
+            <optgroup label="LLM (말투·문맥 반영)">
+              {providers.filter((p) => p.llm).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </optgroup>
+            <optgroup label="번역 전용 API">
+              {providers.filter((p) => !p.llm).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </optgroup>
           </select>
         </label>
         <label className="field">
           이름
           <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="예: 개인 키" maxLength={60} />
         </label>
-        <label className="field wide">
-          API 키
-          <input className="input mono" type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
-            placeholder="붙여 넣기" autoComplete="off" spellCheck={false} />
-        </label>
-        <button className="btn primary" disabled={busy || secret.trim().length < 8}>키 저장</button>
+        {partNames.map((n, i) => (
+          <label key={n} className="field wide">
+            {n}
+            <input className="input mono" type="password" value={parts[i] ?? ""} autoComplete="off" spellCheck={false} placeholder="붙여 넣기"
+              onChange={(e) => setParts((ps) => { const next = [...ps]; next[i] = e.target.value; return next; })} />
+          </label>
+        ))}
+        <button className="btn primary" disabled={busy || !filled}>키 저장</button>
       </form>
+      {info && (
+        <p className="small muted" style={{ margin: 0 }}>
+          <button type="button" className="link" onClick={() => openLink(info.key_url)}>{info.name} 키 만들기</button>
+          {" · "}
+          <button type="button" className="link" onClick={() => openLink(info.pricing_url)}>요금 보기</button>
+          {info.key_note && <> · {info.key_note}</>}
+        </p>
+      )}
       <p className="lock-p">
         <Icon d={ICONS.lock} size={12} />
         키는 현재 Windows 사용자 계정으로 암호화해 이 PC의 설정 파일(jamak.db)에 저장합니다. 저장한 뒤에는 끝 4자리만 볼 수 있습니다.
@@ -193,8 +248,8 @@ function KeysCard({ keys, reload, flash }: { keys: ApiKey[]; reload: () => Promi
 
 // ---------------------------------------------------------------------- profile editor
 
-function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted, flash }: {
-  draft: Draft; keys: ApiKey[]; profiles: Profile[]; llmModels: { name: string; path: string; size_gb: number }[];
+function Editor({ draft: initial, keys, providers, profiles, llmModels, onSaved, onDeleted, flash }: {
+  draft: Draft; keys: ApiKey[]; providers: ProviderInfo[]; profiles: Profile[]; llmModels: { name: string; path: string; size_gb: number }[];
   onSaved: (id: number, msg: string) => void; onDeleted: () => void; flash: (t: string, bad?: boolean) => void;
 }) {
   const [d, setD] = useState<Draft>(initial);
@@ -205,9 +260,12 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
   const [testing, setTesting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const saved = profiles.find((p) => p.id === d.id) ?? null;
-  const cloud = d.kind === "anthropic" || d.kind === "gemini";
-  const provider = d.kind === "anthropic" ? "anthropic" : d.kind === "gemini" ? "gemini" : null;
+  const cloud = isCloud(d.kind);
+  const provider = cloud ? d.kind : null;
+  const info = providers.find((p) => p.id === provider);
+  const llm = info?.llm ?? true;
   const kindKeys = keys.filter((k) => k.provider === provider);
+  const fallbacks = profiles.filter((p) => p.cloud && p.id !== d.id);
   const o = d.options;
   const setO = (patch: Partial<ProfileOptions>) => setD({ ...d, options: { ...o, ...patch } });
 
@@ -215,8 +273,8 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
     setModels([]);
     setModelErr(null);
     if (d.kind === "anthropic") api.get<{ models: string[] }>("/settings/models?kind=anthropic").then((r) => setModels(r.models));
-    if (d.kind === "gemini" && d.api_key_id !== null) {
-      api.get<{ models: string[] }>(`/settings/models?kind=gemini&key_id=${d.api_key_id}`)
+    else if (isCloud(d.kind) && d.kind !== "deepl" && d.kind !== "papago" && d.api_key_id !== null) {
+      api.get<{ models: string[] }>(`/settings/models?kind=${d.kind}&key_id=${d.api_key_id}`)
         .then((r) => setModels(r.models))
         .catch((e) => setModelErr((e as Error).message));
     }
@@ -227,13 +285,18 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
   }, [saved?.last_test]);
 
   function changeKind(kind: ProfileKind) {
-    const key = keys.find((k) => k.provider === (kind === "anthropic" ? "anthropic" : "gemini"));
+    const key = keys.find((k) => k.provider === kind);
     setD({
       ...d, kind,
       model: kind === "anthropic" ? "claude-opus-5-5" : kind === "local_external" ? "local" : "",
       base_url: kind === "local_external" ? d.base_url || "http://127.0.0.1:8080/v1" : "",
-      api_key_id: kind === "anthropic" || kind === "gemini" ? key?.id ?? null : null,
+      api_key_id: isCloud(kind) ? key?.id ?? null : null,
     });
+  }
+  const group: KindGroup = cloud ? "cloud" : (d.kind as KindGroup);
+  function changeGroup(g: KindGroup) {
+    if (g === group) return;
+    changeKind(g === "cloud" ? (keys.find((k) => isCloud(k.provider))?.provider as CloudKind | undefined) ?? "anthropic" : g);
   }
 
   function body() {
@@ -279,7 +342,8 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
     }
   }
 
-  const valid = d.name.trim() && (d.kind !== "local_external" || d.base_url.trim()) && (!cloud || (d.model.trim() && d.api_key_id !== null));
+  const valid = d.name.trim() && (d.kind !== "local_external" || d.base_url.trim())
+    && (!cloud || ((!llm || d.model.trim()) && (d.api_key_id !== null || !!info?.env.length)));
 
   return (
     <section className="editor" aria-labelledby="ed-h">
@@ -299,13 +363,24 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
       <div className="field">
         <span id="kind-l">종류</span>
         <div className="seg fill" role="group" aria-labelledby="kind-l">
-          {KINDS.map((k) => (
-            <button key={k} type="button" aria-pressed={d.kind === k} onClick={() => changeKind(k)}>
-              {k === "anthropic" ? "Claude" : k === "gemini" ? "Gemini" : KIND_LABEL[k]}
-            </button>
+          {GROUPS.map((g) => (
+            <button key={g.id} type="button" aria-pressed={group === g.id} onClick={() => changeGroup(g.id)}>{g.label}</button>
           ))}
         </div>
       </div>
+      {cloud && (
+        <label className="field">
+          서비스
+          <select className="input" value={d.kind} onChange={(e) => changeKind(e.target.value as ProfileKind)}>
+            <optgroup label="LLM (말투·문맥 반영)">
+              {providers.filter((p) => p.llm).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </optgroup>
+            <optgroup label="번역 전용 API (용어집은 단어 치환만)">
+              {providers.filter((p) => !p.llm).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </optgroup>
+          </select>
+        </label>
+      )}
 
       {d.kind === "local_managed" && (
         <>
@@ -350,7 +425,7 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
       {cloud && (
         <>
           <div className="grid2">
-            <label className="field">
+            {llm && <label className="field">
               모델
               {models.length ? (
                 <select className="input mono" value={d.model} onChange={(e) => setD({ ...d, model: e.target.value })}>
@@ -360,9 +435,9 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
                 </select>
               ) : (
                 <input className="input mono" value={d.model} onChange={(e) => setD({ ...d, model: e.target.value })}
-                  placeholder={d.kind === "gemini" ? "키를 고르면 목록을 불러옵니다" : "claude-opus-5-5"} />
+                  placeholder={info?.lists_models && d.api_key_id === null ? `키를 고르면 목록을 불러옵니다 (예: ${info.model_hint})` : info?.model_hint} />
               )}
-            </label>
+            </label>}
             <label className="field">
               API 키
               <select className="input" value={d.api_key_id ?? ""} onChange={(e) => setD({ ...d, api_key_id: e.target.value ? Number(e.target.value) : null })}>
@@ -377,12 +452,20 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
               </select>
             </label>
             <label className="field">
+              이 서비스가 실패하면
+              <select className="input" value={o.fallback_profile_id ?? ""}
+                onChange={(e) => setO({ fallback_profile_id: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">멈추고 알리기</option>
+                {fallbacks.map((p) => <option key={p.id} value={p.id}>“{p.name}”으로 마저 번역</option>)}
+              </select>
+            </label>
+            {llm && <label className="field">
               거절 응답일 때
               <select className="input" value={o.refusal} onChange={(e) => setO({ refusal: e.target.value as "local" | "mark" })}>
                 <option value="local">로컬로 다시 번역</option>
                 <option value="mark">검수 화면에 표시만</option>
               </select>
-            </label>
+            </label>}
             {d.kind === "anthropic" && (
               <label className="field">
                 추론 강도
@@ -395,6 +478,7 @@ function Editor({ draft: initial, keys, profiles, llmModels, onSaved, onDeleted,
               </label>
             )}
           </div>
+          {!llm && <Note>번역 전용 API는 말투 지시와 앞뒤 문맥을 반영하지 못합니다. 용어집 단어는 번역 전에 한국어로 바꿔 넣습니다. 요금은 보낸 글자 수로 계산됩니다.</Note>}
           {!kindKeys.length && <Note tone="warn">{PROVIDER_NAME[provider!]} 키가 없습니다. 왼쪽 API 키 칸에서 먼저 등록하세요.</Note>}
           {modelErr && <Note tone="err">{modelErr}</Note>}
           <Note>이 프로필로 번역하면 일본어 대사 텍스트가 {PROVIDER_NAME[provider!]}으로 전송됩니다. 영상과 음성은 전송되지 않습니다.</Note>

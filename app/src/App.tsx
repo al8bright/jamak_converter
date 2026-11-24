@@ -3,12 +3,15 @@ import {
   api, connect, inTauri, type JobSummary, type Profile, type SystemInfo, type SystemUsage, type UiSettings,
 } from "./api";
 import { type AppState, Ctx, isLive, useApp, type View } from "./ctx";
+import { GlossaryView } from "./Glossary";
 import { Home } from "./Home";
+import { Models } from "./Models";
 import { Options } from "./Options";
 import { Progress } from "./Progress";
 import { Review } from "./Review";
 import { Settings } from "./Settings";
-import { Setup, setupNeeded, type SetupStatus } from "./Setup";
+import { Setup } from "./Setup";
+import { setupNeeded, type SetupStatus } from "./setupState";
 import { System } from "./System";
 import { applyPalette } from "./theme";
 import { Icon, ICONS, Logo } from "./ui";
@@ -105,9 +108,11 @@ export default function App() {
           {view.kind === "progress" && <Progress key={progressKey ?? "none"} jobKey={progressKey} />}
           {view.kind === "review" && <Review key={reviewKey ?? "none"} jobKey={reviewKey} />}
           {view.kind === "engine" && <Settings />}
+          {view.kind === "glossary" && <GlossaryView key={view.name ?? ""} initial={view.name} />}
+          {view.kind === "models" && <Models />}
           {view.kind === "system" && <System />}
           {view.kind === "setup" && (
-            <Setup onDone={async () => { await refreshSys(); await refreshProfiles(); setView({ kind: "home" }); }} />
+            <Setup onDone={async (next) => { await refreshSys(); await refreshProfiles(); setView({ kind: next ?? "home" }); }} />
           )}
           <Monitor running={running} />
         </div>
@@ -123,7 +128,7 @@ function Sidebar({ view, running, go, progressKey, reviewKey }: {
 }) {
   const { ui, saveUi } = useApp();
   const shut = ui.sidebar === "hidden";
-  const active = view.kind === "options" || view.kind === "setup" ? (view.kind === "setup" ? "system" : "home") : view.kind;
+  const active = view.kind === "options" || view.kind === "setup" ? (view.kind === "setup" ? "models" : "home") : view.kind;
   const item = (id: string, label: string, short: string, d: string, onClick: () => void, badge?: string) => (
     <button key={id} className="nav-item" aria-current={active === id ? "page" : undefined} title={label} onClick={onClick}>
       <Icon d={d} size={shut ? 18 : 16} />
@@ -159,6 +164,8 @@ function Sidebar({ view, running, go, progressKey, reviewKey }: {
       <div className="side-group">
         <span>설정</span>
         {item("engine", "번역 엔진", "번역 엔진", ICONS.engine, () => go({ kind: "engine" }))}
+        {item("glossary", "용어집", "용어집", ICONS.book, () => go({ kind: "glossary" }))}
+        {item("models", "모델 관리", "모델", ICONS.download, () => go({ kind: "models" }))}
         {item("system", "시스템 상태", "시스템", ICONS.system, () => go({ kind: "system" }))}
       </div>
       <span className="side-ver">V0.1.0</span>

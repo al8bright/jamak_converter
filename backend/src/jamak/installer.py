@@ -1,5 +1,5 @@
-"""First-run downloads: everything large or separately licensed is fetched here instead of
-being shipped in the installer.
+"""Downloads: everything large or separately licensed is fetched here (first run, or later from
+설정 › 모델 관리) instead of being shipped in the installer. What can be downloaded is listed in models.py.
 
 Every download is verified with SHA-256 from the publisher's own metadata (GitHub release
 asset digests, PyPI wheel digests, Hugging Face LFS object ids), written to a `.part` file
@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import threading
 import time
 import zipfile
@@ -22,7 +23,9 @@ from typing import Any
 
 import httpx
 
+from jamak import models
 from jamak.config import DEFAULT_LLM_FILE, default_llm_path, paths
+from jamak.models import Spec
 
 LLAMA_BUILD = "b12675"
 LLAMA_CUDA = "12.4"
@@ -32,7 +35,6 @@ CUDA_WHEELS = {  # the versions faster-whisper/CTranslate2 is tested with in thi
 }
 CUDA_DLLS = ("cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll")
 LLM_REPO = "google/gemma-4-12B-it-qat-q4_0-gguf"
-WHISPER_REPO = "Systran/faster-whisper-large-v3"
 USER_AGENT = "jamak-installer"
 
 Progress = Callable[[int, int, str], None]  # done bytes, total bytes, message
@@ -145,18 +147,42 @@ def _swap_dir(staging: Path, final: Path) -> None:
 # ---------------------------------------------------------------------- components
 
 
-@dataclass
+def has_nvidia_gpu() -> bool:
+    return shutil.which("nvidia-smi") is not None
+
+
+def _dir_bytes(p: Path) -> int:
+    if not p.exists():
+        return 0
+    total = 0
+    for f in p.rglob("*"):
+        try:
+            if f.is_file():
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
 class Component:
-    id: str
-    name: str
-    approx_bytes: int
-    note: str = ""
+    def __init__(self, spec: Spec):
+        self.spec = spec
+
+    @property
+    def id(self) -> str:
+        return self.spec.id
 
     def present(self) -> bool:  # pragma: no cover - overridden
         raise NotImplementedError
 
     def install(self, progress: Progress, cancel: threading.Event) -> None:  # pragma: no cover
         raise NotImplementedError
+
+    def remove(self) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def disk_bytes(self) -> int:
+        return 0
 
 
 class FfmpegComponent(Component):
@@ -196,6 +222,9 @@ class FfmpegComponent(Component):
         _swap_dir(staging, paths.bin / "ffmpeg")
         z.unlink(missing_ok=True)
 
+    def disk_bytes(self) -> int:
+        return _dir_bytes(paths.bin / "ffmpeg")
+
 
 class LlamaComponent(Component):
     def present(self) -> bool:
@@ -232,6 +261,12 @@ class LlamaComponent(Component):
         _swap_dir(staging, paths.llama_dir)
         for z in files:
             z.unlink(missing_ok=True)
+
+    def remove(self) -> None:
+        shutil.rmtree(paths.llama_dir, ignore_errors=True)
+
+    def disk_bytes(self) -> int:
+        return _dir_bytes(paths.llama_dir)
 
 
 class CudaComponent(Component):
@@ -273,6 +308,12 @@ class CudaComponent(Component):
 
         cuda.setup(force=True)
 
+    def remove(self) -> None:
+        shutil.rmtree(paths.bin / "cuda", ignore_errors=True)
+
+    def disk_bytes(self) -> int:
+        return _dir_bytes(paths.bin / "cuda")
+
 
 class LlmComponent(Component):
     def present(self) -> bool:
@@ -289,57 +330,253 @@ class LlmComponent(Component):
         download(f"https://huggingface.co/{LLM_REPO}/resolve/main/{DEFAULT_LLM_FILE}", paths.models / DEFAULT_LLM_FILE,
                  f["lfs"]["oid"], f["size"], progress, cancel)
 
+    def remove(self) -> None:
+        (paths.models / DEFAULT_LLM_FILE).unlink(missing_ok=True)
 
-class WhisperComponent(Component):
-    def _dir(self) -> Path:
-        return paths.whisper_models / ("models--" + WHISPER_REPO.replace("/", "--"))
+    def disk_bytes(self) -> int:
+        p = paths.models / DEFAULT_LLM_FILE
+        return p.stat().st_size if p.exists() else 0
+
+
+# faster-whisper conversions whose alignment heads point at decoder layers the model does not have
+# (copied from large-v3): word timestamps then crash CTranslate2 (segfault). Use the last decoder layer.
+ALIGNMENT_FIX: dict[str, list[list[int]]] = {
+    "kotoba-whisper-v2.0": [[1, h] for h in range(20)],  # 2 decoder layers x 20 heads
+}
+
+
+def fix_alignment_heads(model_id: str, model_dir: Path) -> bool:
+    heads = ALIGNMENT_FIX.get(model_id)
+    cfg = model_dir / "config.json"
+    if not heads or not cfg.exists():
+        return False
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    if data.get("alignment_heads") == heads:
+        return False
+    data["alignment_heads"] = heads
+    text = json.dumps(data, indent=1)
+    if cfg.is_symlink():  # never write through into the shared blob
+        cfg.unlink()
+    cfg.write_text(text, encoding="utf-8")
+    return True
+
+
+HF_PATTERNS = {
+    "faster-whisper": ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"],
+    "qwen-asr": ["*.json", "*.safetensors", "*.txt", "*.model", "*.tiktoken", "merges.txt", "vocab*"],
+}
+
+
+class HfModelComponent(Component):
+    """Speech-recognition model: one or more Hugging Face repos in the huggingface_hub cache layout."""
 
     def present(self) -> bool:
-        return any(self._dir().glob("snapshots/*/model.bin"))
+        return models.local_dirs(self.spec) is not None
 
     def install(self, progress: Progress, cancel: threading.Event) -> None:
-        # Same cache layout faster-whisper uses (huggingface_hub cache_dir), so STT finds it.
+        import fnmatch
         import os
 
         os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         from huggingface_hub import snapshot_download
 
+        cache = models.hf_cache_dir(self.spec)
+        patterns = HF_PATTERNS[self.spec.engine or "faster-whisper"]
+        sizes = {}
         with _client() as c:
-            r = c.get(f"https://huggingface.co/api/models/{WHISPER_REPO}/tree/main")
-            r.raise_for_status()
-            total = sum(int(f.get("size") or 0) for f in r.json())
-        err: list[BaseException] = []
+            for repo in self.spec.repos:
+                r = c.get(f"https://huggingface.co/api/models/{repo}/tree/main")
+                r.raise_for_status()
+                sizes[repo] = sum(int(f.get("size") or 0) for f in r.json()
+                                  if any(fnmatch.fnmatch(f["path"], p) for p in patterns))
+        total = sum(sizes.values()) or self.spec.approx_bytes
+        done_before = 0
+        for repo in self.spec.repos:
+            err: list[BaseException] = []
 
-        def run() -> None:
-            try:
-                snapshot_download(WHISPER_REPO, cache_dir=str(paths.whisper_models),
-                                  allow_patterns=["config.json", "preprocessor_config.json", "model.bin",
-                                                  "tokenizer.json", "vocabulary.*"])
-            except BaseException as e:  # noqa: BLE001 - re-raised in the caller thread
-                err.append(e)
+            def run(repo: str = repo, err: list[BaseException] = err) -> None:
+                try:
+                    snapshot_download(repo, cache_dir=str(cache), allow_patterns=patterns)
+                except BaseException as e:  # noqa: BLE001 - re-raised in the caller thread
+                    err.append(e)
 
-        t = threading.Thread(target=run, daemon=True)
-        t.start()
-        while t.is_alive():
+            t = threading.Thread(target=run, daemon=True)
+            t.start()
+            rdir = models.repo_dir(cache, repo)
+            while t.is_alive():
+                if cancel.is_set():
+                    raise Cancelled()  # the download thread finishes in the background; .incomplete files resume
+                progress(min(done_before + _dir_bytes(rdir), total), total, repo.split("/")[-1])
+                t.join(0.5)
+            if err:
+                raise InstallError(f"{repo} download failed: {err[0]}")
+            done_before += sizes.get(repo, 0)
+        dirs = models.local_dirs(self.spec)
+        if dirs is None:
+            raise InstallError(f"{self.spec.name}: downloaded files are incomplete")
+        fix_alignment_heads(self.spec.id, dirs[0])
+        progress(total, total, self.spec.name)
+
+    def remove(self) -> None:
+        cache = models.hf_cache_dir(self.spec)
+        for repo in self.spec.repos:
+            shutil.rmtree(models.repo_dir(cache, repo), ignore_errors=True)
+
+    def disk_bytes(self) -> int:
+        cache = models.hf_cache_dir(self.spec)
+        return sum(_dir_bytes(models.repo_dir(cache, r)) for r in self.spec.repos)
+
+
+UV_BUILD = "0.13.9"
+TORCH_INDEX = "https://download.pytorch.org/whl/cu126"
+
+
+def torch_runtime_dir() -> Path:
+    return paths.bin / "torch-runtime"
+
+
+def torch_python() -> Path:
+    return torch_runtime_dir() / "Scripts" / "python.exe"
+
+
+def runtime_file(name: str) -> Path:
+    from importlib.resources import files
+
+    return Path(str(files("jamak.runtime") / name))
+
+
+class TorchComponent(Component):
+    """A separate Python 3.12 + PyTorch environment for engines the backend exe cannot carry (Qwen3-ASR).
+
+    uv (pinned release, SHA-256 checked) creates the environment; every package comes from a lock
+    file with hashes (runtime/qwen-requirements.lock), so the install is the same on every PC.
+    """
+
+    def present(self) -> bool:
+        return torch_python().exists() and (torch_runtime_dir() / "jamak-runtime.json").exists()
+
+    def _uv(self, progress: Progress, cancel: threading.Event) -> Path:
+        exe = paths.bin / "uv" / "uv.exe"
+        if exe.exists():
+            return exe
+        rel = _github_release("astral-sh/uv", UV_BUILD)
+        asset = next((a for a in rel["assets"] if a["name"] == "uv-x86_64-pc-windows-msvc.zip"), None)
+        if asset is None:
+            raise InstallError(f"uv {UV_BUILD} has no Windows build")
+        z = download(asset["browser_download_url"], paths.bin / "downloads" / asset["name"], _asset_sha(asset),
+                     asset["size"], lambda d, t, m: progress(0, self.spec.approx_bytes, "uv"), cancel)
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(z) as zf:
+            for info in zf.infolist():
+                if Path(info.filename).name in ("uv.exe", "LICENSE-MIT", "LICENSE-APACHE"):
+                    (exe.parent / Path(info.filename).name).write_bytes(zf.read(info))
+        z.unlink(missing_ok=True)
+        return exe
+
+    def _run(self, args: list[str], env: dict[str, str], cancel: threading.Event, watch: list[Path],
+             progress: Progress, msg: str) -> None:
+        from jamak.core.proc import CREATE_NO_WINDOW, bind_to_lifetime
+
+        p = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             encoding="utf-8", errors="replace", creationflags=CREATE_NO_WINDOW)
+        bind_to_lifetime(p)
+        tail: list[str] = []
+
+        def read() -> None:
+            assert p.stdout is not None
+            for line in p.stdout:
+                tail.append(line.rstrip())
+                del tail[:-20]
+
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        total = self.spec.approx_bytes
+        while p.poll() is None:
             if cancel.is_set():
-                raise Cancelled()  # the download thread finishes in the background; .incomplete files resume
-            size = sum(p.stat().st_size for p in self._dir().rglob("*") if p.is_file()) if self._dir().exists() else 0
-            progress(min(size, total), total, WHISPER_REPO.split("/")[-1])
-            t.join(0.5)
-        if err:
-            raise InstallError(f"Whisper download failed: {err[0]}")
-        progress(total, total, WHISPER_REPO.split("/")[-1])
+                p.kill()
+                raise Cancelled()
+            progress(min(sum(_dir_bytes(w) for w in watch), total - 1), total, msg)
+            time.sleep(1.0)
+        reader.join(2)
+        if p.returncode != 0:
+            raise InstallError(f"{msg} failed: " + " / ".join(t for t in tail[-5:] if t))
+
+    def install(self, progress: Progress, cancel: threading.Event) -> None:
+        import os
+
+        uv = self._uv(progress, cancel)
+        cache = paths.bin / "downloads" / "uv-cache"
+        env = {**os.environ, "UV_CACHE_DIR": str(cache), "UV_PYTHON_INSTALL_DIR": str(paths.bin / "python"),
+               "UV_PYTHON_PREFERENCE": "only-managed", "UV_NO_PROGRESS": "1", "UV_NO_CONFIG": "1"}
+        staging = paths.bin / "torch-runtime.new"
+        shutil.rmtree(staging, ignore_errors=True)
+        lock = runtime_file("qwen-requirements.lock")
+        self._run([str(uv), "venv", "--quiet", "--python", "3.12", str(staging)], env, cancel, [cache], progress,
+                  "Python 3.12")
+        self._run([str(uv), "pip", "install", "--python", str(staging / "Scripts" / "python.exe"), "--no-deps",
+                   "--require-hashes", "--index-url", "https://pypi.org/simple", "--extra-index-url", TORCH_INDEX,
+                   "--index-strategy", "unsafe-best-match", "--link-mode", "copy", "-r", str(lock)],
+                  env, cancel, [cache], progress, "PyTorch")
+        check = subprocess.run([str(staging / "Scripts" / "python.exe"), "-c",
+                                "import torch, qwen_asr; print(torch.__version__, torch.cuda.is_available())"],
+                               capture_output=True, text=True, timeout=300)
+        if check.returncode != 0:
+            raise InstallError(f"PyTorch check failed: {check.stderr.strip()[-300:]}")
+        (staging / "jamak-runtime.json").write_text(json.dumps({
+            "torch": check.stdout.strip(), "lock_sha256": _sha256(lock), "uv": UV_BUILD}), encoding="utf-8")
+        _swap_dir(staging, torch_runtime_dir())
+        shutil.rmtree(cache, ignore_errors=True)
+        progress(self.spec.approx_bytes, self.spec.approx_bytes, "PyTorch")
+
+    def remove(self) -> None:
+        shutil.rmtree(torch_runtime_dir(), ignore_errors=True)
+        shutil.rmtree(paths.bin / "python", ignore_errors=True)
+
+    def disk_bytes(self) -> int:
+        return _dir_bytes(torch_runtime_dir()) + _dir_bytes(paths.bin / "python")
 
 
-GB = 1_000_000_000
-COMPONENTS: list[Component] = [
-    FfmpegComponent("ffmpeg", "FFmpeg (영상에서 소리 꺼내기)", 80_000_000, "LGPL 빌드, BtbN/FFmpeg-Builds"),
-    CudaComponent("cuda", "NVIDIA CUDA 라이브러리 (음성 인식 가속)", 1_250_000_000, "cuBLAS, cuDNN (PyPI)"),
-    LlamaComponent("llama", "llama-server (번역 엔진)", 700_000_000, f"llama.cpp {LLAMA_BUILD}, CUDA {LLAMA_CUDA}"),
-    WhisperComponent("whisper", "음성 인식 모델 Whisper large-v3", 3_090_000_000, "MIT"),
-    LlmComponent("llm", "번역 모델 Gemma 4 12B (QAT Q4_0)", 6_980_000_000, "Gemma 라이선스, Google"),
-]
+def _component(s: Spec) -> Component:
+    if s.kind == "stt":
+        return HfModelComponent(s)
+    return {"ffmpeg": FfmpegComponent, "cuda": CudaComponent, "torch": TorchComponent, "llama": LlamaComponent,
+            "llm": LlmComponent}[s.id](s)
+
+
+COMPONENTS: list[Component] = [_component(s) for s in models.SPECS]
+_BY_ID = {c.id: c for c in COMPONENTS}
+
+
+def present(component_id: str) -> bool:
+    c = _BY_ID.get(component_id)
+    return bool(c and c.present())
+
+
+def needs(s: Spec, gpu: bool) -> list[str]:
+    return [*s.requires, *(s.gpu_requires if gpu else ())]
+
+
+def with_dependencies(ids: list[str], gpu: bool) -> list[str]:
+    """`ids` plus everything they need, in install order (dependencies first)."""
+    want: set[str] = set()
+
+    def add(i: str) -> None:
+        if i in want or i not in models.BY_ID:
+            return
+        want.add(i)
+        for d in needs(models.BY_ID[i], gpu):
+            add(d)
+
+    for i in ids:
+        add(i)
+    return [s.id for s in models.SPECS if s.id in want]
+
+
+def recommended_stt(vram_gb: float | None) -> str:
+    if vram_gb is None:
+        return "large-v3-turbo"
+    return "large-v3" if vram_gb >= 8 else "large-v3-turbo"
 
 
 # ---------------------------------------------------------------------- manager
@@ -348,9 +585,6 @@ COMPONENTS: list[Component] = [
 @dataclass
 class ComponentState:
     id: str
-    name: str
-    note: str
-    approx_bytes: int
     status: str = "missing"  # present | missing | queued | running | done | error | cancelled
     done_bytes: int = 0
     total_bytes: int = 0
@@ -366,32 +600,78 @@ class SetupManager:
     lock: threading.Lock = field(default_factory=threading.Lock)
     thread: threading.Thread | None = None
 
-    def status(self) -> list[dict[str, Any]]:
+    def status(self, sizes: bool = False) -> list[dict[str, Any]]:
+        gpu = has_nvidia_gpu()
         out = []
         with self.lock:
             busy = self.running()
+            presence = {c.id: c.present() for c in self.components}
             for c in self.components:
                 st = self.states.get(c.id)
                 if st is None or (not busy and st.status not in ("error", "cancelled")):
-                    st = ComponentState(c.id, c.name, c.note, c.approx_bytes,
-                                        status="present" if c.present() else "missing")
+                    st = ComponentState(c.id, status="present" if presence[c.id] else "missing")
                     self.states[c.id] = st
-                out.append(dict(st.__dict__))
+                s = c.spec
+                deps = needs(s, gpu)
+                used_by = [o.id for o in self.components if presence[o.id] and c.id in needs(o.spec, gpu)]
+                out.append({
+                    **st.__dict__, "name": s.name, "note": s.note, "kind": s.kind, "approx_bytes": s.approx_bytes,
+                    "license": s.license, "summary": s.summary, "vram_gb": s.vram_gb, "tags": list(s.tags),
+                    "requires": deps, "missing_requires": [d for d in deps if not presence.get(d)],
+                    "used_by": used_by, "removable": s.removable,
+                    "disk_bytes": c.disk_bytes() if sizes and presence[c.id] else None,
+                })
         return out
+
+    def ready(self) -> dict[str, Any]:
+        """What the first-run screen needs to know: can a job run at all?"""
+        gpu = has_nvidia_gpu()
+        stt = [s.id for s in models.SPECS if s.kind == "stt"
+               and present(s.id) and all(present(d) for d in needs(s, gpu))]
+        local = present("llama") and present("llm")
+        return {"ffmpeg": present("ffmpeg"), "stt": stt, "local_translation": local, "gpu": gpu,
+                "ok": present("ffmpeg") and bool(stt)}
 
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def install(self, ids: list[str] | None = None) -> None:
+    def install(self, ids: list[str] | None = None) -> list[str]:
         if self.running():
             raise RuntimeError("an installation is already running")
-        todo = [c for c in self.components if (ids is None or c.id in ids) and not c.present()]
+        if ids is None:  # older clients: what a first run needs
+            ids = ["ffmpeg", recommended_stt(None)]
+        unknown = [i for i in ids if i not in _BY_ID]
+        if unknown:
+            raise ValueError(f"unknown component: {', '.join(unknown)}")
+        order = with_dependencies(ids, has_nvidia_gpu())
+        todo = [_BY_ID[i] for i in order if not _BY_ID[i].present()]
         self.cancel_event = threading.Event()
         with self.lock:
             for c in todo:
-                self.states[c.id] = ComponentState(c.id, c.name, c.note, c.approx_bytes, status="queued")
+                self.states[c.id] = ComponentState(c.id, status="queued")
         self.thread = threading.Thread(target=self._run, args=(todo,), name="jamak-setup", daemon=True)
         self.thread.start()
+        return [c.id for c in todo]
+
+    def remove(self, component_id: str) -> None:
+        c = _BY_ID.get(component_id)
+        if c is None:
+            raise ValueError("unknown component")
+        if not c.spec.removable:
+            raise ValueError(f"{c.spec.name}은(는) 지울 수 없습니다")
+        if self.running():
+            raise RuntimeError("내려받는 중에는 지울 수 없습니다")
+        gpu = has_nvidia_gpu()
+        users = [o.spec.name for o in self.components if o.present() and component_id in needs(o.spec, gpu)]
+        if users:
+            raise ValueError(f"{', '.join(users)}이(가) 이 항목을 씁니다. 먼저 지우세요")
+        if c.spec.kind == "stt" and c.present():
+            others = [o for o in self.components if o.spec.kind == "stt" and o.id != c.id and o.present()]
+            if not others:
+                raise ValueError("음성 인식 모델이 하나는 있어야 합니다. 다른 모델을 먼저 받으세요")
+        c.remove()
+        with self.lock:
+            self.states.pop(component_id, None)
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -402,6 +682,12 @@ class SetupManager:
             st = self.states[c.id]
             if self.cancel_event.is_set():
                 st.status = "cancelled"
+                continue
+            gpu = has_nvidia_gpu()
+            failed = [d for d in needs(c.spec, gpu) if self.states.get(d) and self.states[d].status in ("error", "cancelled")]
+            if failed:
+                st.status = "error" if not self.cancel_event.is_set() else "cancelled"
+                st.error = f"먼저 받아야 하는 {', '.join(models.BY_ID[d].name for d in failed)}을(를) 받지 못했습니다"
                 continue
             st.status = "running"
 

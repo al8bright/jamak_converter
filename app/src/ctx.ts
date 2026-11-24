@@ -7,6 +7,8 @@ export type View =
   | { kind: "progress"; key?: string }
   | { kind: "review"; key?: string }
   | { kind: "engine" }
+  | { kind: "glossary"; name?: string }
+  | { kind: "models" }
   | { kind: "system" }
   | { kind: "setup" };
 

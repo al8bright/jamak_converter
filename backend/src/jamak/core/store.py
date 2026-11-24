@@ -17,13 +17,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from jamak.config import paths
-from jamak.core import secrets
+from jamak.core import providers, secrets
 
-Provider = Literal["anthropic", "gemini", "openai_compat"]
-Kind = Literal["local_managed", "local_external", "anthropic", "gemini"]
-CLOUD_KINDS = ("anthropic", "gemini")
-KIND_PROVIDER: dict[str, str] = {"anthropic": "anthropic", "gemini": "gemini", "local_external": "openai_compat"}
-ENV_KEYS = {"anthropic": ("ANTHROPIC_API_KEY",), "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY")}
+# cloud ids come from core/providers.py (one entry per service); test_providers checks they match
+Provider = Literal["anthropic", "gemini", "openai", "deepseek", "xai", "mistral", "openrouter", "deepl", "papago", "openai_compat"]
+Kind = Literal["local_managed", "local_external", "anthropic", "gemini", "openai", "deepseek", "xai", "mistral", "openrouter", "deepl", "papago"]
+CLOUD_KINDS = providers.CLOUD_KINDS
+KIND_PROVIDER: dict[str, str] = {**{k: k for k in CLOUD_KINDS}, "local_external": "openai_compat"}
+ENV_KEYS = providers.ENV_KEYS
 
 DEFAULT_KEY = "default_translation_profile_id"
 
@@ -71,6 +72,7 @@ class ProfileOptions(BaseModel):
     gpu_layers: int = Field(99, ge=0, le=999)
     effort: Literal["low", "medium", "high"] | None = None  # Claude only; None = model default
     refusal: Literal["local", "mark"] = "local"  # cloud refusal: retranslate locally, or only flag
+    fallback_profile_id: int | None = None  # cloud: when the service fails (quota, outage), use this profile
     temperature: float | None = Field(None, ge=0, le=2)
 
 
@@ -164,10 +166,15 @@ class Store:
 
     def add_key(self, provider: str, label: str, secret: str) -> dict[str, Any]:
         secret = secret.strip()
-        if provider not in ("anthropic", "gemini", "openai_compat"):
+        info = providers.get(provider)
+        if info is None and provider != "openai_compat":
             raise StoreError("알 수 없는 제공자입니다")
-        if len(secret) < 8:
+        parts = secret.split("\n")
+        if info is not None and len(parts) != len(info.key_parts):
+            raise StoreError(f"{info.name}에는 {', '.join(info.key_parts)}이(가) 필요합니다")
+        if any(len(x.strip()) < 8 for x in parts):
             raise StoreError("키가 너무 짧습니다")
+        secret = "\n".join(x.strip() for x in parts)
         blob = secrets.protect(secret)
         now = _now()
         with self._conn() as con:
@@ -223,7 +230,13 @@ class Store:
     def _check(self, con: sqlite3.Connection, p: ProfileInput) -> None:
         if p.kind == "local_external" and not (p.base_url or "").strip():
             raise StoreError("외부 서버 프로필에는 서버 주소가 필요합니다")
-        if p.kind in CLOUD_KINDS and not (p.model or "").strip():
+        fb = p.options.fallback_profile_id
+        if fb is not None:
+            r = con.execute("SELECT kind FROM translation_profiles WHERE id=?", (fb,)).fetchone()
+            if r is None or r["kind"] not in CLOUD_KINDS:
+                raise StoreError("대신 쓸 프로필은 클라우드 프로필이어야 합니다")
+        info = providers.get(p.kind)
+        if info is not None and info.llm and not (p.model or "").strip():
             raise StoreError("클라우드 프로필에는 모델 ID가 필요합니다")
         if p.api_key_id is not None:
             r = con.execute("SELECT provider FROM api_keys WHERE id=?", (p.api_key_id,)).fetchone()
