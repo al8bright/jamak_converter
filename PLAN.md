@@ -66,17 +66,19 @@
 
 이 단계에서는 기능을 만들고 켜고 끌 수 있게만 합니다. 효과 측정과 기본값 결정은 Phase 6에서 합니다.
 
-- [ ] STT 엔진 교체 구조: `large-v3-turbo`, `kotoba-whisper-v2.0`도 설정으로 고를 수 있게 함
-- [ ] `core/separate.py`: Demucs `htdemucs`로 보컬 분리, 옵션 처리, 끝나면 GPU 메모리 해제
-- [ ] 환각 필터: 반복 문장, 알려진 환각 문구, `no_speech_prob`와 `avg_logprob` 임계값으로 거르기
-- [ ] 용어집: `glossary.json`(작품별) → Whisper `initial_prompt`와 번역 프롬프트에 반영
-- [ ] 오프닝·엔딩 노래 구간 처리 옵션(가사 번역 / 건너뛰기)
-- [ ] 출력 확장: `.ja.srt`, `.ja-ko.ass` 이중 자막(스타일 템플릿), VTT
-- [ ] GPU 메모리 순서 제어: STT가 끝나면 Whisper 모델을 해제한 뒤 llama-server 실행. 단계 사이 VRAM 사용량을 기록해 확인
-- [ ] 번역 병렬화: llama-server `-np 2~4` 슬롯으로 여러 묶음을 동시에 처리. 문맥은 "앞 묶음의 번역 결과" 대신 "앞 묶음의 일본어 원문"을 넘겨 묶음끼리 서로 기다리지 않게 함. 순차 / 병렬을 옵션으로 둠
-- [ ] (선택) GBNF 문법 제한: JSON 스키마만으로 형식 오류가 잦으면 문법으로 더 엄격하게 제한
+- [x] STT 엔진 교체 구조: `large-v3-turbo`, `kotoba-whisper-v2.0`도 설정으로 고를 수 있게 함
+- [x] `core/separate.py`: Demucs `htdemucs`로 보컬 분리, 옵션 처리, 끝나면 GPU 메모리 해제
+- [x] 환각 필터: 반복 문장, 알려진 환각 문구, `no_speech_prob`와 `avg_logprob` 임계값으로 거르기
+- [x] 용어집: `glossary.json`(작품별) → Whisper `initial_prompt`와 번역 프롬프트에 반영
+- [x] 오프닝·엔딩 노래 구간 처리 옵션(가사 번역 / 건너뛰기)
+- [x] 출력 확장: `.ja.srt`, `.ja-ko.ass` 이중 자막(스타일 템플릿), VTT
+- [x] GPU 메모리 순서 제어: STT가 끝나면 Whisper 모델을 해제한 뒤 llama-server 실행. 단계 사이 VRAM 사용량을 기록해 확인
+- [x] 번역 병렬화: llama-server `-np 2~4` 슬롯으로 여러 묶음을 동시에 처리. 문맥은 "앞 묶음의 번역 결과" 대신 "앞 묶음의 일본어 원문"을 넘겨 묶음끼리 서로 기다리지 않게 함. 순차 / 병렬을 옵션으로 둠
+- [x] (선택) GBNF 문법 제한 → 불필요: llama-server가 JSON 스키마를 내부에서 문법으로 바꿔 강제하고, 키를 묶음의 id로 고정해 줄 수·순서가 어긋날 수 없음
 
 **완료 기준**: 각 기능을 옵션으로 켜고 끌 수 있고 테스트 클립에서 동작함. 이중 자막 ASS가 플레이어에서 열림. 환각 필터와 병렬 번역의 줄 맞춤은 단위 테스트로 확인.
+
+> 결과 (2026-11-24): 보컬 분리는 선택 설치(`uv sync --extra separation`, PyTorch 2.14 + CUDA 12.6). 60초 단위로 스트리밍하고 1초 겹쳐 이어 붙여 2시간 영상도 메모리에 다 올리지 않음(작은 청크로 이음매 경로 GPU 테스트 통과). 노래 구간은 사용자가 지정한 시간 범위(`--song 0:00-1:30`)로 처리. STT 모델은 `large-v3` / `large-v3-turbo` / `kotoba-whisper-v2.0` 이름으로 선택. 병렬 번역(`-np 2`) 실서버 동작 확인. 효과 측정과 기본값은 Phase 6.
 
 ## Phase 3 — API 서버
 

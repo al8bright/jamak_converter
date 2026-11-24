@@ -89,7 +89,8 @@ class Pipeline:
         fps["stt"] = fingerprint({"stt": o.stt.model_dump(mode="json"), "prompt": initial_prompt(o), "v": 1},
                                  fps["separate"])
         fps["segment"] = fingerprint({"filters": o.filters.model_dump(mode="json"),
-                                      "segment": o.segment.model_dump(mode="json"), "v": 1}, fps["stt"])
+                                      "segment": o.segment.model_dump(mode="json"),
+                                      "songs": o.songs.model_dump(mode="json"), "v": 1}, fps["stt"])
         t = o.translate
         if t.mode == "managed":
             mp = Path(t.model_path) if t.model_path else default_llm_path()
@@ -151,10 +152,17 @@ class Pipeline:
         return {"track": track.index, "language": track.language}
 
     def _separate(self) -> None:
-        from jamak.core.separate import separate_vocals
+        from jamak.core import separate as sep
 
-        separate_vocals(self.job.path("audio.wav"), self.job.path("vocals.wav"), self.opts.separate,
-                        progress=lambda f, m: self.emit("separate", "progress", f, m), cancel=self.cancel)
+        audio_info = self.job.stage_info("audio") or {}
+        try:
+            sep.separate_vocals(
+                self.video, int(audio_info.get("track", 0)), self.job.path("vocals.wav"), self.opts.separate,
+                duration=float(self.job.meta.get("duration") or 0.0),
+                progress=lambda f, m: self.emit("separate", "progress", f, m), cancel=self.cancel,
+            )
+        except sep.Cancelled as e:
+            raise Cancelled() from e
 
     def _stt_input(self) -> Path:
         return self.job.path("vocals.wav") if self.opts.separate.enabled else self.job.path("audio.wav")
@@ -179,7 +187,7 @@ class Pipeline:
     def _segment(self) -> dict[str, Any]:
         tr = Transcript.model_validate_json(self.job.path("transcript.json").read_text(encoding="utf-8"))
         kept, dropped = filter_segments(tr.segments, self.opts.filters)
-        lines = segment_lines(kept, self.opts.segment)
+        lines = apply_song_ranges(segment_lines(kept, self.opts.segment), self.opts.songs)
         write_json_atomic(self.job.path("segments.ja.json"), Lines(lines=lines))
         write_json_atomic(self.job.path("filtered.json"), dropped)
         return {"lines": len(lines), "dropped": len(dropped)}
@@ -208,6 +216,24 @@ class Pipeline:
         if not p.exists():
             p = self.job.path("segments.ja.json")
         return Lines.model_validate_json(p.read_text(encoding="utf-8"))
+
+
+def apply_song_ranges(lines: list, songs) -> list:
+    """Mark (or drop) lines that mostly fall inside a user-given song range."""
+    if not songs.ranges:
+        return lines
+    out = []
+    for ln in lines:
+        dur = max(ln.end - ln.start, 1e-6)
+        inside = sum(max(0.0, min(ln.end, b) - max(ln.start, a)) for a, b in songs.ranges)
+        if inside / dur >= 0.5:
+            if songs.mode == "skip":
+                continue
+            ln.flags = [*ln.flags, "song"]
+        out.append(ln)
+    for i, ln in enumerate(out):
+        ln.id = i + 1
+    return out
 
 
 def run_translation(lines, opts: PipelineOptions, job: Job, progress=None, cancel=None,

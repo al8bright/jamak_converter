@@ -15,6 +15,13 @@ class Cancelled(Exception):
     pass
 
 
+# names offered in the UI -> what faster-whisper loads ("large-v3" / "large-v3-turbo" are built in)
+MODEL_ALIASES = {
+    "kotoba-whisper-v2.0": "kotoba-tech/kotoba-whisper-v2.0-faster",  # Japanese-tuned distil model
+}
+MODEL_CHOICES = ["large-v3", "large-v3-turbo", "kotoba-whisper-v2.0"]
+
+
 class FasterWhisperRecognizer:
     def __init__(self, opts: SttOptions):
         self.opts = opts
@@ -38,7 +45,7 @@ class FasterWhisperRecognizer:
             device, compute = self._resolve_device()
             paths.whisper_models.mkdir(parents=True, exist_ok=True)
             self._model = WhisperModel(
-                self.opts.model,
+                MODEL_ALIASES.get(self.opts.model, self.opts.model),
                 device=device,
                 compute_type=compute,
                 download_root=str(paths.whisper_models),

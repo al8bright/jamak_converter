@@ -128,6 +128,13 @@ class FilterOptions(BaseModel):
     )
 
 
+class SongOptions(BaseModel):
+    """Opening/ending songs: time ranges (seconds) given by the user."""
+
+    mode: Literal["translate", "skip"] = "translate"  # translate: keep and mark with ♪; skip: drop the lines
+    ranges: list[tuple[float, float]] = Field(default_factory=list)
+
+
 class SegmentOptions(BaseModel):
     max_chars: int = 32  # Japanese characters per subtitle (about two lines)
     max_duration: float = 7.0
@@ -168,6 +175,7 @@ class PipelineOptions(BaseModel):
     stt: SttOptions = Field(default_factory=SttOptions)
     filters: FilterOptions = Field(default_factory=FilterOptions)
     segment: SegmentOptions = Field(default_factory=SegmentOptions)
+    songs: SongOptions = Field(default_factory=SongOptions)
     translate: TranslateOptions = Field(default_factory=TranslateOptions)
     output: OutputOptions = Field(default_factory=OutputOptions)
     glossary: list[GlossaryEntry] = Field(default_factory=list)

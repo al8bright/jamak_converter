@@ -39,6 +39,8 @@ def build(lines: list[Line], lang: str, ko_max: int) -> pysubs2.SSAFile:
             text = wrap_ko(text, ko_max)
         if not text.strip():
             continue
+        if "song" in ln.flags:
+            text = f"♪ {text} ♪"
         subs.append(pysubs2.SSAEvent(start=_ms(ln.start), end=_ms(ln.end), text=_to_ass_text(text)))
     return subs
 

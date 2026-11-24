@@ -85,3 +85,25 @@ def test_filters_drop_hallucinations():
     reasons = sorted(d["reason"] for d in dropped)
     assert reasons == ["known_phrase", "no_speech", "repeat", "repeat"]
     assert len(kept) == 3
+
+
+def test_song_ranges_mark_or_skip():
+    from jamak.config import SongOptions
+    from jamak.core.pipeline import apply_song_ranges
+    from jamak.core.types import Line
+
+    def lines():
+        return [Line(id=1, start=10, end=12, ja="歌"), Line(id=2, start=89, end=93, ja="境界"),
+                Line(id=3, start=100, end=102, ja="会話")]
+
+    marked = apply_song_ranges(lines(), SongOptions(mode="translate", ranges=[(0, 90)]))
+    assert [ln.flags for ln in marked] == [["song"], [], []]  # line 2 is only 25% inside
+    skipped = apply_song_ranges(lines(), SongOptions(mode="skip", ranges=[(0, 90)]))
+    assert [ln.ja for ln in skipped] == ["境界", "会話"] and [ln.id for ln in skipped] == [1, 2]
+
+
+def test_cli_time_parsing():
+    from jamak.cli import parse_range, parse_time
+
+    assert parse_time("1:30") == 90 and parse_time("0:01:30.5") == 90.5 and parse_time("45") == 45
+    assert parse_range("0:00-1:30") == (0.0, 90.0)

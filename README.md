@@ -197,7 +197,8 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_llama.ps1
 
 # 백엔드
 cd backend
-uv sync
+uv sync                                              # 기본 설치
+uv sync --extra separation                           # (선택) 보컬 분리 Demucs + PyTorch, 약 2.5GB
 uv run jamak doctor                                  # ffmpeg, CUDA, llama-server, 모델 확인
 uv run jamak transcribe "D:\video\episode01.mkv"   # CLI
 uv run jamak serve --port 8765                      # API 서버
@@ -217,7 +218,9 @@ pnpm tauri dev
 | `--glossary 파일` | 용어집. `.txt`(한 줄에 `ユウキ=유키`) 또는 `.json`(`[{"ja","ko","note"}]`). 인식 힌트와 번역에 모두 반영 |
 | `--formats srt,ass,vtt` | 출력 형식 (기본 `srt`) |
 | `--ja` / `--dual` | 일본어 자막도 저장 / 일본어+한국어 이중 ASS 저장 |
-| `--separate` | Demucs 보컬 분리 사용 |
+| `--separate` | Demucs 보컬 분리 사용 (`--extra separation` 설치 필요) |
+| `--song 0:00-1:30` | 오프닝·엔딩 노래 구간 (여러 번 지정 가능). `--song-mode skip`이면 그 구간 대사를 버리고, 기본(`translate`)은 ♪ 표시와 함께 번역 |
+| `--stt-model 이름` | `large-v3`(기본) / `large-v3-turbo` / `kotoba-whisper-v2.0` |
 | `--parallel N` | 번역 묶음 N개 동시 처리 |
 | `--llm-model 경로` | 다른 GGUF 사용 |
 | `--llm-url URL` | 외부 OpenAI 호환 서버 사용 (예: Ollama `http://127.0.0.1:11434/v1`) |

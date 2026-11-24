@@ -32,6 +32,23 @@ def load_glossary(path: Path) -> list[GlossaryEntry]:
     return out
 
 
+def parse_time(text: str) -> float:
+    """'90', '1:30', '0:01:30', '1:30.5' -> seconds."""
+    parts = [float(p) for p in text.strip().split(":")]
+    sec = 0.0
+    for p in parts:
+        sec = sec * 60 + p
+    return sec
+
+
+def parse_range(text: str) -> tuple[float, float]:
+    a, b = text.split("-", 1)
+    start, end = parse_time(a), parse_time(b)
+    if end <= start:
+        raise argparse.ArgumentTypeError(f"bad range {text!r}")
+    return start, end
+
+
 def build_options(args: argparse.Namespace) -> PipelineOptions:
     if args.options:
         opts = PipelineOptions.model_validate_json(Path(args.options).read_text(encoding="utf-8"))
@@ -66,6 +83,10 @@ def build_options(args: argparse.Namespace) -> PipelineOptions:
         opts.output.out_dir = args.out
     if args.glossary:
         opts.glossary = load_glossary(Path(args.glossary))
+    if args.song:
+        opts.songs.ranges = [parse_range(r) for r in args.song]
+    if args.song_mode:
+        opts.songs.mode = args.song_mode
     return opts
 
 
@@ -165,7 +186,7 @@ def main(argv: list[str] | None = None) -> None:
     sep = t.add_mutually_exclusive_group()
     sep.add_argument("--separate", dest="separate", action="store_true", default=None, help="vocal separation (Demucs)")
     sep.add_argument("--no-separate", dest="separate", action="store_false")
-    t.add_argument("--stt-model", help="Whisper model (default large-v3)")
+    t.add_argument("--stt-model", help="large-v3 (default) | large-v3-turbo | kotoba-whisper-v2.0 | HF repo id")
     t.add_argument("--cpu", action="store_true", help="run STT on CPU")
     t.add_argument("--llm-model", help="GGUF path for the managed llama-server")
     t.add_argument("--llm-url", help="external OpenAI-compatible base URL (e.g. http://127.0.0.1:11434/v1)")
@@ -173,6 +194,9 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--parallel", type=int, help="concurrent translation batches")
     t.add_argument("--batch-size", type=int)
     t.add_argument("--glossary", help="glossary .json or .txt (ja=ko per line)")
+    t.add_argument("--song", action="append", metavar="START-END",
+                   help="opening/ending song range, e.g. 0:00-1:30 (repeatable)")
+    t.add_argument("--song-mode", choices=["translate", "skip"], help="song lines: mark with ♪ or drop")
     t.add_argument("--formats", help="comma list of srt,ass,vtt (default srt)")
     t.add_argument("--ja", action="store_true", help="also write Japanese subtitles")
     t.add_argument("--dual", action="store_true", help="also write ja-ko dual ASS")
