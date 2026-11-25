@@ -37,7 +37,7 @@ def test_mac_model_list():
 def test_host_uses_its_own_list():
     from tests.conftest import HOST_SPECS
 
-    assert HOST_SPECS == models.specs_for(hw.current())
+    assert HOST_SPECS == models.specs_for("mac" if sys.platform == "darwin" else "win")  # hw.IS_MAC is patched here
     engines = {s.engine for s in HOST_SPECS if s.kind == "stt"}
     assert engines == ({"mlx-whisper"} if sys.platform == "darwin" else {"faster-whisper", "qwen-asr"})
 
