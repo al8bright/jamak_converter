@@ -75,6 +75,14 @@ def to_transcript(result: dict, duration: float, model: str) -> Transcript:
     return Transcript(language=result.get("language") or "ja", duration=duration, model=model, segments=segments)
 
 
+def transcribe_module():
+    """mlx_whisper's transcribe *module*. `import mlx_whisper.transcribe as x` gives the function instead,
+    because the package's __init__ rebinds the name `transcribe` to it."""
+    import importlib
+
+    return importlib.import_module("mlx_whisper.transcribe")
+
+
 def _same_input(a, b) -> bool:
     if a is b:
         return True
@@ -151,9 +159,9 @@ class MlxWhisperRecognizer:
         progress: ProgressFn | None = None,
         cancel: threading.Event | None = None,
     ) -> Transcript:
-        import mlx_whisper.transcribe as mt
-
         from jamak.core.audio import load_wav
+
+        mt = transcribe_module()
 
         path = model_dir(self.opts.model)
         samples = load_wav(audio)

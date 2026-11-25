@@ -96,11 +96,10 @@ def test_whole_file_without_vad(tiny, speech):
 
 
 def test_cancel_then_run_again(tiny, speech):
-    import mlx_whisper.transcribe as mt
-
     from jamak.core.stt import mlx_whisper as mw
 
     wav, _truth = speech
+    mt = mw.transcribe_module()
     real_tqdm = mt.tqdm
     stop = threading.Event()
     stop.set()

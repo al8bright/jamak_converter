@@ -225,7 +225,7 @@ def fake_mlx(monkeypatch, tmp_path):
 
     mod.transcribe = transcribe
     pkg = types.ModuleType("mlx_whisper")
-    pkg.transcribe = mod
+    pkg.transcribe = transcribe  # as in the real package: the name is the function, not the module
     monkeypatch.setitem(sys.modules, "mlx_whisper", pkg)
     monkeypatch.setitem(sys.modules, "mlx_whisper.transcribe", mod)
     model = tmp_path / "model"
