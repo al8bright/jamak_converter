@@ -178,3 +178,45 @@ def test_translation_models_are_separate_files(jamak_home, monkeypatch):
     assert ins.SetupManager().ready()["local_translation"]
     ins.SetupManager().remove("qwen3.5-9b")
     assert not ins.present("qwen3.5-9b") and not ins.SetupManager().ready()["local_translation"]
+
+
+def test_cleanup_leftovers_of_interrupted_install(jamak_home):
+    from jamak.config import paths
+
+    paths.ensure()
+    (paths.bin / "torch-runtime.new" / "Scripts").mkdir(parents=True)
+    (paths.bin / "downloads" / "uv-cache" / "wheels").mkdir(parents=True)
+    (paths.bin / "downloads" / "uv.zip.part").write_bytes(b"x")  # resumable: kept
+    (paths.bin / "ffmpeg").mkdir()
+    (paths.bin / "ffmpeg.old").mkdir()  # swap finished: old copy goes
+    (paths.bin / "llama-server.old").mkdir()  # swap cut between the renames: previous version comes back
+    blobs = paths.whisper_models / "models--Systran--faster-whisper-large-v3" / "blobs"
+    blobs.mkdir(parents=True)
+    (blobs / "abc.1234abcd.incomplete").write_bytes(b"x")
+    (blobs / "def").write_bytes(b"done")
+
+    removed = ins.cleanup_leftovers()
+    assert not (paths.bin / "torch-runtime.new").exists() and not (paths.bin / "downloads" / "uv-cache").exists()
+    assert (paths.bin / "downloads" / "uv.zip.part").exists()
+    assert (paths.bin / "ffmpeg").exists() and not (paths.bin / "ffmpeg.old").exists()
+    assert (paths.bin / "llama-server").exists() and not (paths.bin / "llama-server.old").exists()
+    assert not (blobs / "abc.1234abcd.incomplete").exists() and (blobs / "def").exists()
+    assert "torch-runtime.new" in removed
+    assert ins.cleanup_leftovers() == []
+
+
+def test_torch_install_failure_removes_staging(jamak_home, monkeypatch):
+    from jamak.config import paths
+
+    paths.ensure()
+    c = ins._BY_ID["torch"]
+    monkeypatch.setattr(ins.TorchComponent, "_uv", lambda self, p, cancel: paths.bin / "uv.exe")
+
+    def fail(self, uv, env, staging, cache, progress, cancel):
+        (staging / "Lib").mkdir(parents=True)
+        raise ins.InstallError("PyTorch failed")
+
+    monkeypatch.setattr(ins.TorchComponent, "_install_into", fail)
+    with pytest.raises(ins.InstallError):
+        c.install(noop, threading.Event())
+    assert not (paths.bin / "torch-runtime.new").exists() and not c.present()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -26,6 +27,8 @@ import httpx
 from jamak import models
 from jamak.config import default_llm_path, paths
 from jamak.models import Spec
+
+log = logging.getLogger(__name__)
 
 LLAMA_BUILD = "b12675"
 LLAMA_CUDA = "12.4"
@@ -141,6 +144,40 @@ def _swap_dir(staging: Path, final: Path) -> None:
         final.rename(old)
     staging.rename(final)
     shutil.rmtree(old, ignore_errors=True)
+
+
+def cleanup_leftovers() -> list[str]:
+    """Remove what an install stopped by closing the app leaves behind. Call only while nothing installs
+    (app start): `<name>.new` staging folders, the uv package cache, and huggingface_hub's
+    `*.incomplete` temp files (named per process, so a later run never resumes them).
+    If a swap was cut between its two renames, the previous version (`<name>.old`) is put back.
+    `.part` files are kept: download() resumes them."""
+    removed: list[str] = []
+    if paths.bin.exists():
+        for d in sorted(paths.bin.iterdir()):
+            if d.is_dir() and d.name.endswith(".old"):
+                final = d.with_name(d.name[: -len(".old")])
+                if not final.exists():
+                    d.rename(final)
+                    removed.append(f"{d.name} -> {final.name}")
+                else:
+                    shutil.rmtree(d, ignore_errors=True)
+                    removed.append(d.name)
+        for d in sorted(paths.bin.iterdir()):
+            if d.is_dir() and d.name.endswith(".new"):
+                shutil.rmtree(d, ignore_errors=True)
+                removed.append(d.name)
+        cache = paths.bin / "downloads" / "uv-cache"
+        if cache.exists():
+            shutil.rmtree(cache, ignore_errors=True)
+            removed.append("downloads/uv-cache")
+    for root in (paths.whisper_models, paths.models / "hf"):
+        for f in root.glob("models--*/blobs/*.incomplete"):
+            f.unlink(missing_ok=True)
+            removed.append(f.name)
+    if removed:
+        log.info("removed leftovers of an interrupted install: %s", ", ".join(removed))
+    return removed
 
 
 # ---------------------------------------------------------------------- components
@@ -516,6 +553,17 @@ class TorchComponent(Component):
                "UV_PYTHON_PREFERENCE": "only-managed", "UV_NO_PROGRESS": "1", "UV_NO_CONFIG": "1"}
         staging = paths.bin / "torch-runtime.new"
         shutil.rmtree(staging, ignore_errors=True)
+        try:
+            self._install_into(uv, env, staging, cache, progress, cancel)
+        except BaseException:
+            # the package cache stays for a retry in this session; cleanup_leftovers() drops it at next start
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        shutil.rmtree(cache, ignore_errors=True)
+        progress(self.spec.approx_bytes, self.spec.approx_bytes, "PyTorch")
+
+    def _install_into(self, uv: Path, env: dict[str, str], staging: Path, cache: Path, progress: Progress,
+                      cancel: threading.Event) -> None:
         lock = runtime_file("qwen-requirements.lock")
         self._run([str(uv), "venv", "--quiet", "--python", "3.12", str(staging)], env, cancel, [cache], progress,
                   "Python 3.12")
@@ -531,12 +579,11 @@ class TorchComponent(Component):
         (staging / "jamak-runtime.json").write_text(json.dumps({
             "torch": check.stdout.strip(), "lock_sha256": _sha256(lock), "uv": UV_BUILD}), encoding="utf-8")
         _swap_dir(staging, torch_runtime_dir())
-        shutil.rmtree(cache, ignore_errors=True)
-        progress(self.spec.approx_bytes, self.spec.approx_bytes, "PyTorch")
 
     def remove(self) -> None:
         shutil.rmtree(torch_runtime_dir(), ignore_errors=True)
         shutil.rmtree(paths.bin / "python", ignore_errors=True)
+        shutil.rmtree(paths.bin / "downloads" / "uv-cache", ignore_errors=True)
 
     def disk_bytes(self) -> int:
         return _dir_bytes(torch_runtime_dir()) + _dir_bytes(paths.bin / "python")

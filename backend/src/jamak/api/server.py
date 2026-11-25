@@ -268,6 +268,10 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     async def lifespan(app: FastAPI):
         mgr.attach_loop(asyncio.get_running_loop())
         paths.ensure()
+        if not setup.running():
+            from jamak.installer import cleanup_leftovers
+
+            await asyncio.to_thread(cleanup_leftovers)
         yield
 
     app = FastAPI(title="jamak", version=__version__, lifespan=lifespan)
