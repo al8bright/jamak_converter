@@ -9,10 +9,15 @@ Differences from faster-whisper:
 - no built-in VAD: the same Silero VAD spans are passed as `clip_timestamps`, so silence is skipped
   and timestamps stay on the original timeline.
 Progress and cancel go through the tqdm bar mlx-whisper updates after every 30-second window.
+
+mlx-whisper (like openai-whisper) runs the encoder again for word timestamps and for every temperature
+retry of the same 30-second window. The encoder is most of the work, so its last result is kept and
+reused while the input stays the same (`EncoderOnce`).
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +25,8 @@ from types import SimpleNamespace
 from jamak.config import SttOptions
 from jamak.core.stt.base import ProgressFn
 from jamak.core.types import SttSegment, Transcript, Word
+
+log = logging.getLogger(__name__)
 
 WINDOW = 30.0  # Whisper's input length; VAD spans are merged up to this
 
@@ -68,6 +75,46 @@ def to_transcript(result: dict, duration: float, model: str) -> Transcript:
     return Transcript(language=result.get("language") or "ja", duration=duration, model=model, segments=segments)
 
 
+def _same_input(a, b) -> bool:
+    if a is b:
+        return True
+    if a.shape != b.shape or a.dtype != b.dtype:
+        return False
+    import mlx.core as mx
+
+    return bool(mx.array_equal(a, b).item())
+
+
+class EncoderOnce:
+    """Wraps a Whisper encoder: the same mel window is encoded once, however often it is asked for."""
+
+    def __init__(self, encoder):
+        self.encoder = encoder
+        self.calls = self.hits = 0
+        self._mel = self._out = None
+
+    def __call__(self, mel):
+        self.calls += 1
+        if self._mel is not None and _same_input(self._mel, mel):
+            self.hits += 1
+            return self._out
+        out = self.encoder(mel)
+        self._mel, self._out = mel, out
+        return out
+
+
+def _set_encoder(model, encoder) -> None:
+    """mlx's nn.Module is a dict of its sub-modules; a plain callable has to go in as a normal attribute
+    (which is looked up first), and the real encoder back in as a dict item."""
+    if isinstance(model, dict):
+        model.pop("encoder", None)
+        model.__dict__.pop("encoder", None)
+        if isinstance(encoder, dict):
+            model["encoder"] = encoder
+            return
+    object.__setattr__(model, "encoder", encoder)
+
+
 class _Bar:
     """Stands in for tqdm.tqdm inside mlx_whisper.transcribe: reports progress, stops on cancel."""
 
@@ -95,6 +142,7 @@ class _Bar:
 class MlxWhisperRecognizer:
     def __init__(self, opts: SttOptions):
         self.opts = opts
+        self.encoder_calls = self.encoder_reused = 0  # of the last transcribe()
 
     def transcribe(
         self,
@@ -116,6 +164,17 @@ class MlxWhisperRecognizer:
         if progress:
             progress(0.0, f"말소리 구간 {len(clips) // 2}개" if clips else "")
 
+        model = once = None
+        try:  # the model transcribe() is about to use (ModelHolder keeps one loaded model per path)
+            import mlx.core as mx
+
+            model = mt.ModelHolder.get_model(str(path), mx.float16)
+            once = EncoderOnce(model.encoder)
+            _set_encoder(model, once)
+        except Exception as e:  # reuse is only a speed-up: never fail a job over it
+            log.warning("encoder reuse is off: %s: %s", type(e).__name__, e)
+            model = once = None
+
         real_tqdm = mt.tqdm
         mt.tqdm = SimpleNamespace(tqdm=_Bar(progress, cancel))  # one job at a time runs STT
         try:
@@ -126,6 +185,10 @@ class MlxWhisperRecognizer:
             )
         finally:
             mt.tqdm = real_tqdm
+            if once is not None:
+                _set_encoder(model, once.encoder)
+                self.encoder_calls, self.encoder_reused = once.calls, once.hits
+                log.info("encoder: %d calls, %d reused", once.calls, once.hits)
         return to_transcript(result, duration, self.opts.model)
 
     def close(self) -> None:

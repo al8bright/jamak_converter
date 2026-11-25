@@ -27,15 +27,9 @@ GAPS = [1.0, 0.8, 1.4, 0.9, 1.6, 1.0]  # silence before each line
 SR = 48000
 
 
-def synth(out_dir: Path) -> tuple[Path, Path]:
+def _speech() -> tuple[np.ndarray, list[dict]]:
+    """The dialogue as 48 kHz mono samples in -1..1 over a quiet chord, and when each line is spoken."""
     import pyopenjtalk
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    wav_path = out_dir / "dialogue.wav"
-    mkv_path = out_dir / "dialogue.mkv"
-    truth_path = out_dir / "dialogue.truth.json"
-    if mkv_path.exists() and truth_path.exists():
-        return mkv_path, truth_path
 
     pieces: list[np.ndarray] = []
     truth = []
@@ -55,7 +49,33 @@ def synth(out_dir: Path) -> tuple[Path, Path]:
     n = len(speech)
     tt = np.arange(n) / SR
     bgm = sum(np.sin(2 * math.pi * f * tt) for f in (220.0, 277.18, 329.63)) * 0.01  # soft A-major chord
-    mix = np.clip(speech + bgm, -1.0, 1.0)
+    return np.clip(speech + bgm, -1.0, 1.0), truth
+
+
+def speech_wav_16k(out_dir: Path) -> tuple[Path, list[dict]]:
+    """The dialogue as the 16 kHz mono WAV the recognizers read (no FFmpeg needed)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    wav_path = out_dir / "dialogue16k.wav"
+    mix, truth = _speech()
+    mix = mix[: len(mix) // 3 * 3].reshape(-1, 3).mean(axis=1)  # 48 kHz -> 16 kHz (averaging = rough low-pass)
+    with wave.open(str(wav_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SR // 3)
+        w.writeframes((mix * 32767).astype("<i2").tobytes())
+    return wav_path, truth
+
+
+def synth(out_dir: Path) -> tuple[Path, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    wav_path = out_dir / "dialogue.wav"
+    mkv_path = out_dir / "dialogue.mkv"
+    truth_path = out_dir / "dialogue.truth.json"
+    if mkv_path.exists() and truth_path.exists():
+        return mkv_path, truth_path
+
+    mix, truth = _speech()
+    n = len(mix)
     with wave.open(str(wav_path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)

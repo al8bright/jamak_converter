@@ -169,11 +169,51 @@ def fake_mlx(monkeypatch, tmp_path):
     mod = types.ModuleType("mlx_whisper.transcribe")
     mod.tqdm = real_tqdm
 
+    class Encoder(dict):  # like mlx's nn.Module: a dict of its parts that can be called
+        runs = 0
+
+        def __call__(self, mel):
+            Encoder.runs += 1
+            return mel * 2
+
+    class Model(dict):
+        def __init__(self):
+            self["encoder"] = Encoder()
+
+        def __getattr__(self, key):
+            try:
+                return self[key]
+            except KeyError:
+                raise AttributeError(key) from None
+
+    class ModelHolder:
+        model = Model()
+
+        @classmethod
+        def get_model(cls, path, dtype):
+            return cls.model
+
+    mod.ModelHolder = ModelHolder
+    mod.Encoder = Encoder
+    core = types.ModuleType("mlx.core")
+    core.float16 = "float16"
+    core.array_equal = lambda a, b: np.array(np.array_equal(a, b))
+    core.clear_cache = lambda: None
+    mlx = types.ModuleType("mlx")
+    mlx.core = core
+    monkeypatch.setitem(sys.modules, "mlx", mlx)
+    monkeypatch.setitem(sys.modules, "mlx.core", core)
+
     def transcribe(audio, *, path_or_hf_repo, **kw):
         calls.update(kw, path=path_or_hf_repo, n=len(audio))
         frames = len(audio) // 160
+        model = ModelHolder.get_model(path_or_hf_repo, None)
         with mod.tqdm.tqdm(total=frames, unit="frames", disable=kw.get("verbose") is not False) as bar:
-            for _ in range(4):
+            for i in range(4):
+                mel = np.full((1, 30, 8), float(i), dtype=np.float32)
+                first = model.encoder(mel)  # decoding
+                again = model.encoder(mel.copy())  # a temperature retry / word timestamps: same window
+                assert np.array_equal(first, again) and np.array_equal(first, mel * 2)
                 bar.update(frames // 4)
         return {"text": "おはよう", "language": "ja", "segments": [
             {"start": 0.5, "end": 1.6, "text": " おはよう", "avg_logprob": -0.2, "no_speech_prob": 0.01,
@@ -209,6 +249,32 @@ def test_mlx_recognizer_maps_result(fake_mlx, tmp_path):
     assert [w.text for w in t.segments[0].words] == ["おは", "よう"] and t.segments[0].words[1].prob == 0.8
     assert seen[-1] == pytest.approx(0.999, abs=0.01) and seen == sorted(seen)
     assert mod.tqdm is real_tqdm  # restored
+
+
+def test_mlx_encoder_runs_once_per_window(fake_mlx, tmp_path):
+    from jamak.core.stt.mlx_whisper import MlxWhisperRecognizer
+
+    _calls, model, mod, _ = fake_mlx
+    real = mod.ModelHolder.model.encoder
+    r = MlxWhisperRecognizer(SttOptions(model=str(model), vad=False))
+    r.transcribe(_wav(tmp_path / "a.wav"), None)
+    assert mod.Encoder.runs == 4  # 4 windows, each asked for twice
+    assert (r.encoder_calls, r.encoder_reused) == (8, 4)
+    held = mod.ModelHolder.model
+    assert held.encoder is real and held["encoder"] is real and "encoder" not in held.__dict__  # put back
+
+
+def test_mlx_encoder_restored_after_cancel(fake_mlx, tmp_path):
+    from jamak.core.stt import mlx_whisper as mw
+
+    _calls, model, mod, _ = fake_mlx
+    real = mod.ModelHolder.model.encoder
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(mw.Cancelled):
+        mw.MlxWhisperRecognizer(SttOptions(model=str(model), vad=False)).transcribe(
+            _wav(tmp_path / "a.wav"), None, cancel=stop)
+    assert mod.ModelHolder.model.encoder is real
 
 
 def test_mlx_recognizer_passes_vad_spans(fake_mlx, tmp_path, monkeypatch):

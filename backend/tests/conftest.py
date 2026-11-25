@@ -11,15 +11,18 @@ DATA = Path(__file__).parent / ".data"
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "gpu: needs CUDA + models (slow); run with -m gpu")
+    config.addinivalue_line("markers", "mlx: real mlx-whisper on Apple Silicon (downloads whisper-tiny); run with -m mlx")
 
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("-m"):
         return
-    skip = pytest.mark.skip(reason="GPU/model test; run with: uv run pytest -m gpu")
-    for item in items:
-        if "gpu" in item.keywords:
-            item.add_marker(skip)
+    for mark, how in (("gpu", "GPU/model test; run with: uv run pytest -m gpu"),
+                      ("mlx", "needs a Mac with Apple Silicon; run with: uv run pytest -m mlx")):
+        skip = pytest.mark.skip(reason=how)
+        for item in items:
+            if mark in item.keywords:
+                item.add_marker(skip)
 
 
 from jamak import models as _models  # noqa: E402
