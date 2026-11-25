@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, connect, inTauri, type JobSummary, type Profile, type SystemInfo, type SystemUsage, type UiSettings,
+  api, basename, connect, inTauri, type JobSummary, type Profile, type SystemInfo, type SystemUsage, type UiSettings,
 } from "./api";
 import { type AppState, Ctx, isLive, useApp, type View } from "./ctx";
 import { GlossaryView } from "./Glossary";
@@ -14,10 +14,24 @@ import { Setup } from "./Setup";
 import { setupNeeded, type SetupStatus } from "./setupState";
 import { System } from "./System";
 import { applyPalette } from "./theme";
-import { Icon, ICONS, Logo } from "./ui";
+import { Icon, ICONS, Logo, Modal } from "./ui";
 
 const DEFAULT_UI: UiSettings = { palette: "seoul", sidebar: "open", cloud_notice_seen: false };
 applyPalette("seoul");
+
+/** What closing now costs. A first run is deleted whole; a job that already has subtitles keeps them. */
+function CloseWarning({ live }: { live: JobSummary[] }) {
+  const lost = live.filter((j) => j.live?.kind !== "retranslate" && !j.translated);
+  if (!lost.length) return <p>지금 종료하면 진행 중인 작업은 저장되지 않습니다. 이미 만든 자막은 그대로 남습니다.</p>;
+  return (
+    <>
+      <p>지금 종료하면 이 작업은 삭제됩니다. 다음에는 음성 인식부터 다시 해야 합니다.</p>
+      <ul className="small muted close-list">
+        {lost.map((j) => <li key={j.key}>{j.video_name ?? basename(j.video_path ?? "")}</li>)}
+      </ul>
+    </>
+  );
+}
 
 export default function App() {
   const [ready, setReady] = useState<"wait" | "ok" | string>("wait");
@@ -59,6 +73,32 @@ export default function App() {
     );
     return () => unlisten?.();
   }, []);
+
+  // Closing the window in the middle of a job throws that job away (the backend deletes it at the
+  // next start), so ask first.
+  const liveJobs = useRef<JobSummary[]>([]);
+  liveJobs.current = jobs.filter(isLive);
+  const [closing, setClosing] = useState<JobSummary[] | null>(null);
+  useEffect(() => {
+    if (!inTauri) return;
+    let unlisten: (() => void) | undefined;
+    let gone = false;
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow()
+        .onCloseRequested((e) => {
+          if (!liveJobs.current.length) return;
+          e.preventDefault();
+          setClosing(liveJobs.current);
+        })
+        .then((u) => (gone ? u() : (unlisten = u))),
+    );
+    return () => {
+      gone = true;
+      unlisten?.();
+    };
+  }, []);
+  const keepOpen = useCallback(() => setClosing(null), []);
+  const quit = useCallback(async () => (await import("@tauri-apps/api/window")).getCurrentWindow().destroy(), []);
 
   // keep the job list fresh while something runs
   const anyLive = jobs.some(isLive);
@@ -117,6 +157,14 @@ export default function App() {
           <Monitor running={running} />
         </div>
       </div>
+      {closing && (
+        <Modal title="작업이 진행 중입니다" onClose={keepOpen} actions={<>
+          <button className="btn" onClick={keepOpen}>계속 작업</button>
+          <button className="btn danger" onClick={quit}>종료</button>
+        </>}>
+          <CloseWarning live={closing} />
+        </Modal>
+      )}
     </Ctx.Provider>
   );
 }

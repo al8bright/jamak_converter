@@ -33,7 +33,8 @@
 - [ ] mlx-whisper 결과 확인(large-v3·turbo·kotoba, 실제 영화): 단어 시간이 faster-whisper와 비슷한지, 빔 서치가 없어 대사가 얼마나 빠지는지. 단어 시간·VAD 구간·진행률·취소가 동작하는 것 자체는 CI에서 whisper-tiny로 확인함
 - [ ] 인코더 재사용 효과 측정: 같은 영화를 재사용을 켜고 끈 채로 돌려 시간 비교(로그의 `encoder: N calls, M reused`). 예상은 turbo·kotoba 40% 안팎, large-v3 15~20% 단축이지만 추정값임
 - [ ] 키체인: 키 등록 → 앱 다시 열기 → 번역. 새 빌드에서 macOS가 키체인 접근을 묻는지
-- [ ] 하위 프로세스: 앱을 강제 종료했을 때 llama-server가 남는지(Mac에는 Job Object가 없어 정상 종료 때만 정리함)
+- [ ] 하위 프로세스: 로컬 번역 중에 앱을 닫았을 때 llama-server가 남지 않는지(SIGTERM → 3초 → 강제 종료, `lib.rs`의 `stop_backend`. Rust 쪽은 Mac에서 빌드해 본 적 없음). 앱이 강제 종료됐을 때는 백엔드의 부모 감시가 1초 간격으로 확인해 정리함
+- [ ] 작업 중에 창을 닫을 때 확인 창이 뜨는지, Cmd+Q로 끝낼 때도 뜨는지(창 닫기 이벤트만 잡으므로 안 뜰 수 있음)
 - [ ] 통합 메모리 70% 기준(`hw.METAL_SHARE`)으로 모델 경고가 맞는지. 16GB Mac에서 Whisper와 Gemma 12B를 차례로 쓸 때 메모리 압박
 
 ### 결정할 것

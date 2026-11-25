@@ -137,6 +137,7 @@
   - 개발 중에는 `uv run`으로 실행, 배포 때는 PyInstaller exe를 `externalBin`으로 실행
   - 빈 포트를 골라 넘기고 `/health`가 응답할 때까지 대기한 뒤 UI에 포트 전달
   - 앱을 종료하면 사이드카도 종료. 비정상 종료 시 남은 프로세스 정리
+- [x] **작업 중 종료** (2026-11-26): 중간에 닫힌 작업은 이어서 하지 않고 다음 시작 때 지움(`api/jobs.py`의 `purge_interrupted`, `meta.json`의 `running` 표시). 이미 번역된 자막이 있던 작업은 남김. 작업 중에 창을 닫으면 앱 안 확인 창(기본 선택은 "계속 작업")
 - [x] 영상을 끌어다 놓아 선택하는 기능
 - [x] 화면 구성안([docs/mockups](docs/mockups), [DESIGN.md](DESIGN.md))대로 다시 만들기: 접히는 사이드바와 움직이는 로고, 하단 시스템 모니터, 네온 팔레트 4종, 앱 아이콘
 - [x] 설정 › 번역 엔진: API 키 추가(가림 입력, 저장 후 `••••abcd`만)·삭제, 프로필 추가·수정(로컬 내장 / 외부 서버 / Claude / Gemini), 연결 테스트, 기본 프로필 지정
@@ -146,6 +147,7 @@
 
 **완료 기준**: `pnpm tauri dev`로 띄운 앱에서 영상 선택 → 처리 → 수정 → 저장까지 마우스로만 끝낼 수 있음.
 
+> 작업 중 종료 (2026-11-26, Windows, 105분 영화): 고치기 전에는 강제 종료해도 프로세스와 GPU 메모리는 정리되지만(인식 중 1초, 번역 중 llama-server 3초 안) 다시 켜면 작업이 "번역 전"으로 남고 인식·번역을 0%부터 다시 했음. 고친 뒤 실제 앱으로 확인: 작업 없이 닫으면 바로 종료, 인식 중에 닫으면 확인 창 → "계속 작업"은 창 유지, "종료"는 종료 → 백엔드를 죽이고 다시 켜니 작업 폴더가 지워지고 목록이 빔. 운영체제 기본 확인 창은 기본 버튼이 "종료"라 Enter 한 번에 작업이 날아가서 앱 안 창으로 바꿈.
 > 결과 (2026-11-24): Tauri 앱이 백엔드를 띄우고 토큰으로 연결함. 브라우저(Playwright)로 경로 입력 → 옵션 → 처리(진행률 WebSocket) → 검수 → 저장 흐름을 실제 GPU 작업으로 확인. 앱을 정상 종료할 때와 강제 종료할 때 모두 백엔드 프로세스가 남지 않음(4개 → 0개). 화면 테스트 중 `/system` 요청 두 개가 동시에 torch를 import하다 보컬 분리가 "설치 안 됨"으로 잘못 나오는 문제를 찾아 한 번만 확인하도록 고침. 남은 것: 진행 메시지 일부가 영어(백엔드 문구), 대화 상자·끌어다 놓기는 사람이 직접 눌러 확인 필요.
 
 ## Phase 4.5 — 디자인 맞추기, 용어집, 모델 관리, 클라우드 서비스 확장 (TODO.md에서 옮김)
@@ -212,7 +214,7 @@ Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확�
 - [x] **llama-server Metal 빌드**: `llama-b12675-bin-macos-arm64.tar.gz`(16.8MB, GitHub 공개 SHA-256). 맨 위 폴더를 벗기고 dylib 심볼릭 링크째 풀기(`filter="data"`)
 - [x] **FFmpeg**: BtbN에는 Mac 판이 없어 martin-riedl.de의 9.1 빌드(서명된 정적 빌드, GPL)를 받음. 같은 서버의 `.sha256`을 믿지 않고 해시와 크기를 코드에 고정. zip을 풀며 실행 권한을 붙임. `audio._tool`이 `.exe`를 붙이지 않게 수정
 - [x] **API 키**: macOS 로그인 키체인(`keyring`의 macOS 백엔드, Security.framework 직접 호출이라 키가 명령줄에 나오지 않음). DB에는 `keychain:<임의 id>`만 저장, 키를 지우면 키체인 항목도 지움. 오류 메시지에 키 원문이 들어가지 않게 예외를 감쌈. Windows에서 만든 DB를 Mac에서 열면 "다시 등록" 안내
-- [x] **하위 프로세스**: Job Object 대신 띄운 프로세스를 기억했다가 정상 종료(atexit)와 부모 감시 종료 때 kill
+- [x] **하위 프로세스**: Job Object 대신 띄운 프로세스를 기억했다가 서버 종료(lifespan), 정상 종료(atexit), 부모 감시 종료 때 kill. 앱은 백엔드를 바로 죽이지 않고 SIGTERM을 보낸 뒤 3초를 기다림(`lib.rs`의 `stop_backend`). uvicorn은 SIGTERM을 받으면 정리 후 같은 신호로 프로세스를 끝내 atexit이 돌지 않으므로 lifespan에서 꺼야 함. `tests/test_interrupted.py`의 `test_sigterm_stops_the_children`이 CI의 Mac 러너에서 확인(Windows에서는 건너뜀)
 - [x] **경로·화면**: 데이터 폴더 `~/Library/Application Support/jamak_converter`, Finder에서 보기(`open -R`), 시스템 점검의 GPU·CUDA 줄, 처음 실행·모델 관리의 "GPU 메모리" 문구를 Mac에서는 "모델에 쓸 수 있는 메모리"로. `/setup`·`/system`에 `platform`, `accelerator` 추가
 - [x] **의존성**: `mlx-whisper`·`keyring`은 Mac에만, NVIDIA 휠은 Windows에만(`pyproject.toml` 표시). uv 잠금 파일을 Windows와 macOS arm64 두 환경으로 풂. mlx 휠이 macOS 14부터라 최소 버전 14.0
 - [x] **빌드**: `tauri.macos.conf.json`(`.app`, `.dmg`), 사이드카 이름(`lib.rs`의 `SIDECAR`), PyInstaller spec의 Mac 분기(mlx dylib·metallib, mlx_whisper 자산, torch 제외), `scripts/build_app.sh`. 두 빌드 스크립트 모두 묶은 백엔드에서 `jamak doctor --bundled`(음성 인식 엔진을 불러오는지)를 확인

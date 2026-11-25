@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from jamak import __version__
-from jamak.api.jobs import JobManager, list_job_dirs, load_options, purge_job
+from jamak.api.jobs import JobManager, list_job_dirs, load_options, purge_interrupted, purge_job
 from jamak.config import GlossaryEntry, OutputOptions, PipelineOptions, default_llm_path, paths
 from jamak.core.cache import Job, write_json_atomic
 from jamak.core.pipeline import save_options
@@ -257,11 +257,21 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     async def lifespan(app: FastAPI):
         mgr.attach_loop(asyncio.get_running_loop())
         paths.ensure()
+        # the app was closed in the middle of these jobs: they are deleted, not resumed
+        gone = await asyncio.to_thread(purge_interrupted, mgr.busy)
+        if gone:
+            print(f"deleted {len(gone)} interrupted job(s): {', '.join(gone)}", file=sys.stderr)
         if not setup.running():
             from jamak.installer import cleanup_leftovers
 
             await asyncio.to_thread(cleanup_leftovers)
         yield
+        # Normal shutdown (SIGTERM from the app on macOS, Ctrl+C). Stop llama-server here and not only
+        # in atexit: Python waits for worker threads before atexit, and the app kills us after 3 s.
+        from jamak.core.proc import kill_children
+
+        mgr.close()
+        kill_children()
 
     app = FastAPI(title="jamak", version=__version__, lifespan=lifespan)
     app.state.manager = mgr
@@ -826,4 +836,5 @@ def serve(host: str = "127.0.0.1", port: int = 8765, parent_pid: int | None = No
     if port == 0:
         port = free_port()
     print(f"JAMAK_LISTENING http://{host}:{port}", flush=True)
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+    # 2 s: on SIGTERM, do not wait for an open WebSocket forever; the app kills us 3 s after asking
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning", timeout_graceful_shutdown=2)

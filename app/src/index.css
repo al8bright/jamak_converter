@@ -288,6 +288,7 @@ table.t.compact td { padding: 6px 10px; }
 .modal h2 { margin: 0; font-size: 15px; }
 .modal p { margin: 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.close-list { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 
 /* ------------------------------------------------------------------ progress */
 .big-pct { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; color: var(--p); text-shadow: var(--p-text); font-variant-numeric: tabular-nums; }

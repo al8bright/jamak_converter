@@ -4,9 +4,11 @@ On Windows every child is placed in a Job Object with KILL_ON_JOB_CLOSE, so if t
 process dies (crash, Tauri kills the sidecar) the children (llama-server) die with it and
 never keep holding GPU memory or a port.
 
-macOS has no Job Objects: children are remembered and killed at normal exit (atexit, which uvicorn
-reaches on SIGTERM) and by the parent-pid watcher before it hard-exits. A SIGKILL of this process
-still leaves them running; llama-server then exits by itself only when its port is reused.
+macOS has no Job Objects: children are remembered and killed when the server shuts down (SIGTERM
+from the app: uvicorn runs the lifespan shutdown, then lets the signal end the process, so atexit
+is not reached), at normal exit (atexit, for the CLI), and by the parent-pid watcher before it
+hard-exits. A SIGKILL of this process still leaves them running, which is why the app sends
+SIGTERM first and waits 3 s (lib.rs `stop_backend`).
 """
 
 from __future__ import annotations

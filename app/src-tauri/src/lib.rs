@@ -164,6 +164,17 @@ fn start_backend(app: &tauri::AppHandle) {
 fn stop_backend(app: &tauri::AppHandle) {
     if let Some(backend) = app.try_state::<Backend>() {
         if let Some(mut child) = backend.child.lock().unwrap().take() {
+            if cfg!(unix) {
+                // macOS has no Job Object: a killed backend leaves llama-server running with its
+                // memory. SIGTERM lets the backend stop it first; the kill below is the fallback.
+                let _ = Command::new("kill").args(["-TERM", &child.id().to_string()]).status();
+                for _ in 0..30 {
+                    if let Ok(Some(_)) = child.try_wait() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
             let _ = child.kill();
             let _ = child.wait();
         }
