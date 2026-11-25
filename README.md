@@ -5,6 +5,7 @@
 번역만 Claude, Gemini, OpenAI, DeepL, Papago 같은 클라우드 서비스로 바꿀 수 있습니다. 이때도 나가는 것은 **일본어 대사 텍스트뿐**이고, 영상과 음성은 이 PC를 떠나지 않습니다.
 
 > 상태: Phase 0~5 완료(번역 엔진 선택 포함), 실제 영상 검증(Phase 6)만 남음 · 개발 계획은 [PLAN.md](PLAN.md)를 참고하세요.
+> 지원: Windows 10/11 + NVIDIA GPU. **Mac(Apple Silicon, macOS 14 이상) 코드도 들어 있지만 아직 실제 Mac에서 돌려 보지 않았습니다**(아래 [Mac 지원](#mac-지원-apple-silicon-시험-전), TODO.md 4장).
 
 ![architecture](docs/architecture.png)
 
@@ -143,7 +144,7 @@ class Translator(Protocol):
 ### 설정 저장 (`jamak.db`)과 키 보호
 
 - 설정(API 키, 번역 프로필, 기본 프로필, 화면 설정)은 `%LOCALAPPDATA%\jamak_converter\jamak.db`(SQLite) 한 파일에 저장합니다. 작업 캐시는 지금처럼 `jobs/` 폴더의 파일입니다.
-- API 키는 **Windows DPAPI**(현재 사용자 범위)로 암호화해서 저장합니다. 저장한 뒤에는 끝 4자리만 볼 수 있고, 키 원문은 로그, 예외 메시지, `meta.json`, 캐시 해시, API 응답 어디에도 넣지 않습니다.
+- API 키는 **Windows DPAPI**(현재 사용자 범위)로 암호화해서 저장합니다. Mac에서는 **로그인 키체인**에 넣고 DB에는 `keychain:<임의 id>`만 남깁니다(키를 지우면 키체인 항목도 지움). 저장한 뒤에는 끝 4자리만 볼 수 있고, 키 원문은 로그, 예외 메시지, `meta.json`, 캐시 해시, API 응답 어디에도 넣지 않습니다.
 - DPAPI는 DB 파일이 다른 PC나 다른 Windows 사용자에게 넘어가는 경우를 막아 줍니다. 같은 사용자로 실행된 프로그램은 복호화할 수 있다는 한계가 있습니다.
 - 개발·CLI용으로 환경 변수(`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`)도 씁니다. 우선순위는 프로필에 연결된 키 → 환경 변수입니다.
 
@@ -254,6 +255,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build_app.ps1
 # → app\src-tauri\target\release\bundle\nsis\jamak_0.1.0_x64-setup.exe (약 80MB)
 ```
 
+Mac(Apple Silicon)에서는 `scripts/build_app.sh`가 `.app`과 `.dmg`를 만듭니다(서명 전이라 처음 열 때 우클릭 › 열기).
+
 설치한 앱을 처음 열면 내려받기 화면이 나옵니다. 꼭 필요한 것은 FFmpeg와 음성 인식 모델 하나뿐입니다(그래픽카드 메모리에 맞춰 하나를 미리 고름. large-v3면 CUDA 포함 약 4.4GB). 로컬 번역(llama-server + Gemma 4 12B, 약 7.7GB)은 선택이고, 받지 않으면 클라우드 번역 키를 등록하도록 안내합니다. 나머지는 **설정 › 모델 관리**에서 언제든 받거나 지웁니다. 모두 `%LOCALAPPDATA%\jamak_converter\`에 저장합니다.
 
 | 항목 | 받는 크기 | 언제 |
@@ -329,6 +332,24 @@ uv run pytest -m gpu -s  # 끝까지 실행하는 테스트 (CUDA, Whisper, llam
 
 테스트용 영상은 저작권 문제가 없도록 Open JTalk(`pyopenjtalk`)로 일본어 대사를 합성해 자동으로 만듭니다(`tests/fixtures_gen.py`). 트랙이 두 개인 MKV(영어 무음 + 일본어 대사 + 배경음)라서 트랙 선택, 발화 감지, 인식, 번역을 한 번에 확인할 수 있습니다.
 
+### Mac 지원 (Apple Silicon, 시험 전)
+
+Mac에는 NVIDIA GPU가 없으므로 Apple GPU(Metal)를 씁니다. 코드와 단위 테스트(가짜 mlx-whisper·키체인으로 Windows에서 실행)는 있지만 **실제 Mac에서는 아직 돌려 보지 않았습니다.** Intel Mac은 대상이 아닙니다.
+
+| | Windows | Mac (Apple Silicon) |
+|---|---|---|
+| 음성 인식 | faster-whisper (CUDA) | **mlx-whisper** (Metal). 같은 모델 id, MLX 변환본. 빔 서치 없음, Silero VAD 구간을 `clip_timestamps`로 넘김 |
+| Qwen3-ASR | PyTorch 실행 환경 | 목록에서 숨김 (MPS 시험 전) |
+| CUDA 라이브러리 | 받음 | 필요 없음 |
+| 번역 | llama-server CUDA 빌드 | llama-server **Metal** 빌드 (`macos-arm64.tar.gz`, 17MB) |
+| FFmpeg | BtbN LGPL | martin-riedl.de 서명 빌드 (해시 고정) |
+| 모델 메모리 | VRAM | 통합 메모리의 약 70% (Metal이 GPU에 주는 몫) |
+| API 키 | DPAPI | 키체인 |
+| 데이터 폴더 | `%LOCALAPPDATA%\jamak_converter` | `~/Library/Application Support/jamak_converter` |
+| 앱 | NSIS 설치 파일 | `.app` / `.dmg` (서명·공증 전) |
+
+인식 결과 캐시에는 엔진 이름이 들어가므로 Windows와 Mac의 결과가 섞이지 않습니다. 실제 Mac에서 확인할 것은 TODO.md 4장에 있습니다.
+
 ## 7. 폴더 구조
 
 ```
@@ -340,20 +361,21 @@ jamak_converter/
 │  │  │  ├─ audio.py        # ffmpeg 추출, 트랙 선택
 │  │  │  ├─ separate.py     # Demucs
 │  │  │  ├─ filters.py      # Whisper 환각 필터
-│  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object)
-│  │  │  ├─ stt/            # base.py, faster_whisper.py, qwen_asr.py (작업 프로세스를 띄우는 쪽)
+│  │  │  ├─ proc.py         # 자식 프로세스 수명 관리 (Windows Job Object, Mac은 종료 시 정리)
+│  │  │  ├─ stt/            # base.py, faster_whisper.py, mlx_whisper.py(Mac), qwen_asr.py (작업 프로세스를 띄우는 쪽)
 │  │  │  ├─ glossary.py     # 용어집 파일 (v2: 별칭, 인식 힌트), 가져오기·내보내기, 합치기
 │  │  │  ├─ providers.py    # 클라우드 번역 서비스 목록
 │  │  │  ├─ segmenter.py
 │  │  │  ├─ translate/      # base.py(공통 묶음 번역), openai_compat.py, llama_server.py,
 │  │  │  │                  # anthropic_api.py, gemini_api.py, mt_api.py(DeepL·Papago), factory.py, prompts.py
 │  │  │  ├─ store.py        # 설정 DB (jamak.db, SQLite)
-│  │  │  ├─ secrets.py      # API 키 암호화 (Windows DPAPI)
+│  │  │  ├─ secrets.py      # API 키 보호 (Windows DPAPI, macOS 키체인)
 │  │  │  ├─ subtitle.py     # SRT/ASS/VTT 쓰기
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
 │  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐), checks.py (시스템 점검·사용량)
-│  │  ├─ models.py          # 받을 수 있는 항목 목록 (크기, VRAM, 필요한 실행 환경)
+│  │  ├─ hw.py              # 플랫폼·GPU 확인 (NVIDIA VRAM, Apple 통합 메모리)
+│  │  ├─ models.py          # 받을 수 있는 항목 목록 (크기, VRAM, 필요한 실행 환경, Windows·Mac별)
 │  │  ├─ installer.py       # 받기·지우기 (FFmpeg, CUDA DLL, PyTorch 환경, llama-server, 모델)
 │  │  ├─ runtime/           # qwen_asr_worker.py, qwen-requirements.lock (PyTorch 환경에서 실행)
 │  │  └─ cli.py
@@ -371,7 +393,9 @@ jamak_converter/
 │  └─ architecture-dark.png
 ├─ scripts/
 │  ├─ setup_llama.ps1       # (개발용) llama-server 내려받기·검증·설치
-│  └─ build_app.ps1         # 설치 파일 빌드 (PyInstaller + Tauri NSIS)
+│  ├─ build_app.ps1         # 설치 파일 빌드 (PyInstaller + Tauri NSIS)
+│  └─ build_app.sh          # Mac 앱 빌드 (PyInstaller + Tauri .app/.dmg)
+├─ .github/workflows/test.yml  # CI: Windows·macOS(arm64) 백엔드 테스트, UI 타입 검사
 ├─ README.md
 ├─ PLAN.md
 └─ DESIGN.md                # 브랜드·UI 가이드
@@ -382,4 +406,6 @@ jamak_converter/
 - Whisper 모델, faster-whisper, Silero VAD, Demucs, llama.cpp는 모두 MIT입니다. 각 LLM의 라이선스는 모델마다 다르므로 배포 전에 확인해야 합니다.
 - 설치 파일에는 이 앱과 Python 백엔드만 들어 있습니다. FFmpeg(LGPL 빌드, BtbN), NVIDIA cuBLAS·cuDNN(PyPI 휠), llama.cpp, 모델은 처음 실행할 때 각 배포처에서 사용자가 직접 내려받으므로 이 프로젝트가 재배포하지 않습니다. 받은 폴더에 각자의 라이선스 파일이 함께 저장됩니다.
 - 모델 관리에서 받을 수 있는 번역 모델(Gemma 4, Qwen3.5, Mistral Small 3.2)은 모두 Hugging Face 저장소 기준 Apache-2.0입니다. 목록에 없는 GGUF는 `models` 폴더에 넣고 화면에서 고르면 됩니다.
+- Mac용 FFmpeg는 martin-riedl.de의 서명된 정적 빌드(**GPL**)를 받습니다. 사용자가 직접 받는 것이라 이 앱의 라이선스에는 영향이 없지만, 나중에 앱에 함께 넣으려면 LGPL 빌드로 바꿔야 합니다.
+- Mac의 Whisper 모델은 MLX 변환본입니다: large-v3·turbo는 mlx-community(MIT), kotoba-whisper v2.0은 다른 사람이 올린 변환본(`kaiinui/kotoba-whisper-v2.0-mlx`, Apache-2.0)입니다.
 - 보컬 분리(Demucs + PyTorch, 약 4GB)는 설치 파일에 넣지 않았습니다. 개발 환경에서 `uv sync --extra separation`으로만 쓸 수 있습니다.

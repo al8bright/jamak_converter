@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from jamak import models
+from jamak import hw, models
 from jamak.config import default_llm_path, paths
 from jamak.models import Spec
 
@@ -32,6 +32,13 @@ log = logging.getLogger(__name__)
 
 LLAMA_BUILD = "b12675"
 LLAMA_CUDA = "12.4"
+# macOS (Apple Silicon) FFmpeg: a fixed build from martin-riedl.de (signed, static, GPL). The hashes are
+# pinned here instead of read from the same server, so a changed file is refused.
+MAC_FFMPEG_BUILD = "https://ffmpeg.martin-riedl.de/download/macos/arm64/1795207104_9.1"
+MAC_FFMPEG_FILES = {
+    "ffmpeg": ("1f66e9a690a7f1c9e60b012379f8869c11818d1797f45b21dbb2f2564ba61ae1", 28_623_086),
+    "ffprobe": ("6ef2df5f575042923a28537ab37adf936f28bf3e7b85de23a1447ed447ec1dbd", 28_541_295),
+}
 CUDA_WHEELS = {  # the versions faster-whisper/CTranslate2 is tested with in this repo (see uv.lock)
     "nvidia-cublas-cu12": "12.9.2.10",
     "nvidia-cudnn-cu12": "9.28.1.4",
@@ -184,7 +191,7 @@ def cleanup_leftovers() -> list[str]:
 
 
 def has_nvidia_gpu() -> bool:
-    return shutil.which("nvidia-smi") is not None
+    return hw.has_nvidia_gpu()
 
 
 def _dir_bytes(p: Path) -> int:
@@ -233,6 +240,8 @@ class FfmpegComponent(Component):
             return False
 
     def install(self, progress: Progress, cancel: threading.Event) -> None:
+        if hw.IS_MAC:
+            return self._install_mac(progress, cancel)
         rel = _github_release("BtbN/FFmpeg-Builds", None)
         pat = re.compile(r"^ffmpeg-n(\d+)\.(\d+).*-win64-lgpl-shared-\d+\.\d+\.zip$")
         cands = [(tuple(map(int, m.groups())), a) for a in rel["assets"] if (m := pat.match(a["name"]))]
@@ -258,6 +267,24 @@ class FfmpegComponent(Component):
         _swap_dir(staging, paths.bin / "ffmpeg")
         z.unlink(missing_ok=True)
 
+    def _install_mac(self, progress: Progress, cancel: threading.Event) -> None:
+        total = sum(size for _sha, size in MAC_FFMPEG_FILES.values())
+        staging = paths.bin / "ffmpeg.new"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
+        done = 0
+        for name, (sha, size) in MAC_FFMPEG_FILES.items():
+            z = download(f"{MAC_FFMPEG_BUILD}/{name}.zip", paths.bin / "downloads" / f"{name}-mac.zip", sha, size,
+                         progress, cancel, done_before=done, grand_total=total)
+            done += size
+            with zipfile.ZipFile(z) as zf:
+                (staging / name).write_bytes(zf.read(name))
+            (staging / name).chmod(0o755)  # zipfile does not keep the executable bit
+            z.unlink(missing_ok=True)
+        (staging / "version.json").write_text(json.dumps({"build": MAC_FFMPEG_BUILD, "license": "GPL"}),
+                                              encoding="utf-8")
+        _swap_dir(staging, paths.bin / "ffmpeg")
+
     def disk_bytes(self) -> int:
         return _dir_bytes(paths.bin / "ffmpeg")
 
@@ -268,6 +295,8 @@ class LlamaComponent(Component):
 
     def install(self, progress: Progress, cancel: threading.Event) -> None:
         rel = _github_release("ggml-org/llama.cpp", LLAMA_BUILD)
+        if hw.IS_MAC:
+            return self._install_mac(rel, progress, cancel)
         want = [f"llama-{LLAMA_BUILD}-bin-win-cuda-{LLAMA_CUDA}-x64.zip", f"cudart-llama-bin-win-cuda-{LLAMA_CUDA}-x64.zip"]
         assets = {a["name"]: a for a in rel["assets"]}
         missing = [w for w in want if w not in assets]
@@ -297,6 +326,34 @@ class LlamaComponent(Component):
         _swap_dir(staging, paths.llama_dir)
         for z in files:
             z.unlink(missing_ok=True)
+
+    def _install_mac(self, rel: dict[str, Any], progress: Progress, cancel: threading.Event) -> None:
+        """Metal build: a tar.gz with llama-server, its dylibs and version symlinks in one folder."""
+        import tarfile
+
+        name = f"llama-{LLAMA_BUILD}-bin-macos-arm64.tar.gz"
+        a = next((x for x in rel["assets"] if x["name"] == name), None)
+        if a is None:
+            raise InstallError(f"release {LLAMA_BUILD} has no {name}")
+        t = download(a["browser_download_url"], paths.bin / "downloads" / name, _asset_sha(a), a["size"], progress,
+                     cancel)
+        staging = paths.bin / "llama-server.new"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
+        with tarfile.open(t) as tf:
+            members = []
+            for m in tf.getmembers():
+                parts = Path(m.name).parts
+                if len(parts) < 2 or not (m.isfile() or m.issym()):
+                    continue
+                m.name = str(Path(*parts[1:]))  # drop the llama-<build>/ folder
+                members.append(m)
+            tf.extractall(staging, members=members, filter="data")  # keeps the exec bits and in-folder links
+        (staging / "version.json").write_text(json.dumps({
+            "build": LLAMA_BUILD, "metal": True, "assets": [{"name": name, "sha256": _asset_sha(a)}]}),
+            encoding="utf-8")
+        _swap_dir(staging, paths.llama_dir)
+        t.unlink(missing_ok=True)
 
     def remove(self) -> None:
         shutil.rmtree(paths.llama_dir, ignore_errors=True)
@@ -388,6 +445,9 @@ ALIGNMENT_FIX: dict[str, list[list[int]]] = {
 
 
 def fix_alignment_heads(model_id: str, model_dir: Path) -> bool:
+    s = models.spec(model_id)
+    if s is None or s.engine != "faster-whisper":  # MLX configs have no such key (and reject unknown ones)
+        return False
     heads = ALIGNMENT_FIX.get(model_id)
     cfg = model_dir / "config.json"
     if not heads or not cfg.exists():
@@ -406,6 +466,7 @@ def fix_alignment_heads(model_id: str, model_dir: Path) -> bool:
 HF_PATTERNS = {
     "faster-whisper": ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"],
     "qwen-asr": ["*.json", "*.safetensors", "*.txt", "*.model", "*.tiktoken", "merges.txt", "vocab*"],
+    "mlx-whisper": ["config.json", "weights.npz", "weights.safetensors"],
 }
 
 

@@ -26,10 +26,12 @@ class SpeechRecognizer(Protocol):
 
 
 def engine_for(opts: SttOptions) -> str:
-    from jamak import models
+    from jamak import hw, models
 
     s = models.spec(opts.model)
-    return s.engine if s and s.engine else "faster-whisper"  # unknown names: a CTranslate2 model folder
+    if s and s.engine:
+        return s.engine
+    return "mlx-whisper" if hw.IS_MAC else "faster-whisper"  # unknown names: a model folder
 
 
 def create_recognizer(opts: SttOptions) -> SpeechRecognizer:
@@ -38,6 +40,10 @@ def create_recognizer(opts: SttOptions) -> SpeechRecognizer:
         from jamak.core.stt.faster_whisper import FasterWhisperRecognizer
 
         return FasterWhisperRecognizer(opts)
+    if engine == "mlx-whisper":
+        from jamak.core.stt.mlx_whisper import MlxWhisperRecognizer
+
+        return MlxWhisperRecognizer(opts)
     if engine == "qwen-asr":
         from jamak.core.stt.qwen_asr import QwenAsrRecognizer
 

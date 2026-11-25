@@ -168,22 +168,9 @@ def glossary_status(opts: PipelineOptions) -> dict[str, Any]:
 
 
 def _gpu_info() -> list[dict[str, Any]]:
-    exe = shutil.which("nvidia-smi")
-    if not exe:
-        return []
-    try:
-        res = subprocess.run([exe, "--query-gpu=name,memory.total,memory.used,driver_version",
-                              "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5,
-                             creationflags=CREATE_NO_WINDOW)
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    gpus = []
-    for line in res.stdout.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) == 4:
-            gpus.append({"name": parts[0], "memory_total_mb": int(float(parts[1])),
-                         "memory_used_mb": int(float(parts[2])), "driver": parts[3]})
-    return gpus
+    from jamak import hw
+
+    return hw.gpus()
 
 
 def _ffmpeg_path() -> str | None:
@@ -196,7 +183,7 @@ def _ffmpeg_path() -> str | None:
 
 
 def system_info() -> dict[str, Any]:
-    from jamak import models
+    from jamak import hw, models
     from jamak.core import cuda, separate
     from jamak.installer import present
 
@@ -222,6 +209,8 @@ def system_info() -> dict[str, Any]:
         "version": __version__,
         "home": str(paths.home),
         "ffmpeg": _ffmpeg_path(),
+        "platform": hw.current(),
+        "accelerator": hw.accelerator(),
         "cuda_devices": cuda.cuda_device_count(),
         "gpus": _gpu_info(),
         "llama_server": llama,
@@ -339,6 +328,8 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
             raise HTTPException(404, "not found")
         if sys.platform == "win32":
             subprocess.Popen(["explorer", "/select,", str(p)], creationflags=CREATE_NO_WINDOW)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", str(p)])  # Finder, with the file selected
         return {"ok": True}
 
     class UrlBody(BaseModel):
@@ -508,12 +499,14 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
     # -------------------------------------------------------------- first-run setup
     @app.get("/setup")
     def setup_status(sizes: bool = False):
+        from jamak import hw
         from jamak.installer import recommended_stt
 
         gpus = _gpu_info()
         vram = round(gpus[0]["memory_total_mb"] / 1024, 1) if gpus else None
         return {"running": setup.running(), "components": setup.status(sizes=sizes), "ready": setup.ready(),
                 "vram_gb": vram, "recommended_stt": recommended_stt(vram),
+                "platform": hw.current(), "accelerator": hw.accelerator(),
                 "free_bytes": shutil.disk_usage(paths.home if paths.home.exists() else paths.home.anchor).free}
 
     @app.post("/setup/install", status_code=202)

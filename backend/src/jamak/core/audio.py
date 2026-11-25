@@ -21,7 +21,7 @@ def _tool(name: str) -> str:
     """The copy the first-run installer put in <home>/bin/ffmpeg wins over PATH."""
     from jamak.config import paths
 
-    local = paths.bin / "ffmpeg" / f"{name}.exe"
+    local = paths.bin / "ffmpeg" / (f"{name}.exe" if sys.platform == "win32" else name)
     if local.exists():
         return str(local)
     exe = shutil.which(name)

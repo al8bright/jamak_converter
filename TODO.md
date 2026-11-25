@@ -23,37 +23,30 @@
 
 ## 4. Mac 지원 (Apple Silicon)
 
-지금은 Windows 전용입니다. NVIDIA GPU 대신 Apple GPU(Metal)를 씁니다. Intel Mac은 대상에서 뺍니다.
+코드는 들어갔습니다(PLAN.md Phase 4.6). Windows에서 가짜 mlx-whisper·키체인으로 단위 테스트만 했고, **아래는 전부 실제 Mac이 있어야 합니다.** Intel Mac은 대상에서 뺍니다.
 
-### 음성 인식
+### 처음 확인 (Mac 한 대, M 시리즈 16GB 이상)
 
-- [ ] **mlx-whisper 엔진 추가**(1순위): `core/stt/base.py`의 `engine_for`에 `"mlx-whisper"` 추가
-  - 모델: large-v3, large-v3-turbo의 MLX 변환본(`mlx-community/whisper-*-mlx`)
-  - 단어 시간과 결과 형식(`avg_logprob`, `no_speech_prob`, `compression_ratio`)이 openai-whisper와 같아 분할, 환각 필터, 캐시 구조를 그대로 쓸 수 있는지 확인
-  - `models.py`에 Mac 전용 항목을 따로 둘지, 같은 id(`large-v3`)를 플랫폼마다 다른 변환본으로 받을지 결정. 캐시 키(`stt_identity`)에 엔진이 들어가야 Windows 캐시와 섞이지 않음
-- [ ] kotoba-whisper: mlx-whisper로 돌릴 변환본이 있는지, 없으면 whisper.cpp GGML 변환본(`kotoba-tech/kotoba-whisper-v2.0-ggml`, 확인 필요)을 쓸지 결정
-- [ ] 대안 비교: whisper.cpp(Metal, llama-server처럼 실행 파일, 단어 시간이 덜 정확함), WhisperKit(Core ML, 가장 빠르지만 Swift), macOS 26 SpeechAnalyzer(일본어 품질 확인 필요). 같은 영화 구간으로 속도와 품질 비교
-- [ ] Qwen3-ASR: PyTorch MPS에서 qwen-asr와 ForcedAligner가 도는지 확인. 안 되면 Mac에서는 목록에서 숨김
-- [ ] faster-whisper는 Mac에서 CPU로만 돌아 느림. 마지막 수단으로만 남길지 결정
+- [ ] `uv sync` → `uv run pytest` → `uv run jamak doctor --bundled`가 통과하는지. CI(`.github/workflows/test.yml`, macos-14)를 한 번 돌리면 먼저 알 수 있음
+- [ ] `pnpm tauri dev`로 처음 실행 → FFmpeg·llama-server·Whisper 받기 → 영화 한 편 처리까지
+  - FFmpeg: martin-riedl.de zip을 풀고 실행 권한을 주는 부분, Gatekeeper가 막지 않는지
+  - llama-server: tar.gz의 dylib 심볼릭 링크가 살아 있는지, `-ngl 99`로 Metal에 올라가는지
+- [ ] mlx-whisper 결과 확인: 단어 시간(`word_timestamps`)이 faster-whisper와 비슷한지, 빔 서치가 없어 정확도가 얼마나 떨어지는지, VAD 구간(`clip_timestamps`)을 넘겼을 때 시간이 원래 영상과 맞는지
+- [ ] 진행률이 오르고 취소가 바로 먹는지(tqdm을 바꿔 끼우는 방식, `core/stt/mlx_whisper.py`)
+- [ ] 키체인: 키 등록 → 앱 다시 열기 → 번역. 새 빌드에서 macOS가 키체인 접근을 묻는지
+- [ ] 하위 프로세스: 앱을 강제 종료했을 때 llama-server가 남는지(Mac에는 Job Object가 없어 정상 종료 때만 정리함)
+- [ ] 통합 메모리 70% 기준(`hw.METAL_SHARE`)으로 모델 경고가 맞는지. 16GB Mac에서 Whisper와 Gemma 12B를 차례로 쓸 때 메모리 압박
 
-### 번역
+### 결정할 것
 
-- [ ] llama-server Mac 빌드(`llama-<build>-bin-macos-arm64.zip`)를 받도록 `LlamaComponent` 수정. 지금은 Windows CUDA zip만 받음(`installer.py:234`)
-- [ ] GPU 메모리 대신 통합 메모리 기준으로 모델 추천과 경고 표시(`vram_gb`, `recommended_stt`, 모델 관리의 GPU 메모리 경고)
+- [ ] kotoba-whisper MLX 변환본: 지금은 `kaiinui/kotoba-whisper-v2.0-mlx`(다른 사람 변환, 내용 미확인). 같은 영화 구간에서 결과를 보고 그대로 둘지, 직접 변환본을 만들지
+- [ ] 대안 비교: whisper.cpp(Metal), WhisperKit(Core ML), macOS 26 SpeechAnalyzer. mlx-whisper 결과가 나쁘면 같은 구간으로 속도와 품질 비교
+- [ ] Qwen3-ASR: PyTorch MPS에서 qwen-asr와 ForcedAligner가 도는지. 되면 Mac용 `qwen-requirements.lock`(PyPI)과 `bin/python` 경로로 PyTorch 실행 환경을 다시 켬. 지금은 Mac 목록에서 숨김
+- [ ] 개발 환경에 torch가 딸려 옴: mlx-whisper가 변환 스크립트 때문에 torch를 의존성으로 요구함(앱 묶음에서는 뺌). 신경 쓰이면 `--no-deps`로 따로 설치하는 방법 검토
 
-### Windows 전용 부분 바꾸기
+### 배포
 
-- [ ] **API 키 암호화**: DPAPI(`core/secrets.py`) 대신 macOS 키체인. 키 원문을 로그·meta.json·캐시·API 응답에 남기지 않는 규칙은 그대로
-- [ ] **하위 프로세스 정리**: Job Object(`core/proc.py`의 `bind_to_lifetime`) 대신 프로세스 그룹과 부모 감시. `CREATE_NO_WINDOW`를 쓰는 곳(`proc.py`, `audio.py`, `separate.py`, `llama_server.py`, `qwen_asr.py`, `checks.py`, `server.py`)은 플랫폼별로 나눔
-- [ ] **FFmpeg**: BtbN 빌드에는 Mac 판이 없음(`installer.py:199`). 다른 배포처(서명된 정적 빌드)를 정하고 SHA-256 확인 방식 유지
-- [ ] **CUDA 항목**: Mac에서는 모델 관리 목록과 의존성(`gpu_requires`)에서 빼기. `has_nvidia_gpu()` 대신 플랫폼별 가속 확인
-- [ ] **PyTorch 실행 환경**: `Scripts/python.exe` 대신 `bin/python`(`installer.py:445`), uv의 macOS arm64 빌드, `qwen-requirements.lock`을 Mac용으로 따로 만들기(cu126 인덱스 대신 PyPI)
-- [ ] **경로와 실행 파일 이름**: `.exe`를 붙이는 곳 정리(`config.py:44`, `installer.py`), 데이터 폴더를 `%LOCALAPPDATA%` 대신 `~/Library/Application Support/jamak_converter`로
-- [ ] **Tauri**: NSIS 대신 `.dmg`/`.app` 번들, 사이드카 이름(`lib.rs:67`의 `jamak-backend.exe`), PyInstaller Mac 빌드
-- [ ] **서명과 공증**: Apple Developer ID로 서명하고 공증(notarization)하지 않으면 Gatekeeper가 실행을 막음. 받은 실행 파일(llama-server, ffmpeg, uv)의 격리 속성(quarantine) 처리도 확인
-- [ ] **글꼴**: Noto Sans KR/JP가 없는 Mac에서도 화면이 맞는지 확인(DESIGN.md 4.2)
-
-### 확인
-
-- [ ] Mac 한 대(M 시리즈, 16GB 이상)에서 처음 실행 → 모델 받기 → 영화 한 편 처리까지 확인. Mac 장비가 있어야 해서 지금은 할 수 없음
-- [ ] CI에 macOS 러너로 백엔드 단위 테스트 추가
+- [ ] **서명과 공증**: Apple Developer ID로 서명하고 공증하지 않으면 Gatekeeper가 실행을 막음(`tauri.macos.conf.json`의 `signingIdentity`). PyInstaller 묶음 안의 dylib도 함께 서명해야 함
+- [ ] 받은 실행 파일(llama-server, ffmpeg)의 격리 속성(quarantine): 앱이 직접 받으면 붙지 않는 것으로 알고 있으나 확인
+- [ ] **글꼴**: Noto Sans KR/JP가 없는 Mac에서도 화면이 맞는지(DESIGN.md 4.2)
+- [ ] 사용량 표시: Mac에는 GPU 사용률(nvidia-smi)이 없어 화면 아래 모니터에 CPU·RAM만 나옴. 필요하면 `powermetrics` 없이 얻는 방법 검토

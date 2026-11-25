@@ -160,17 +160,33 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         ok &= good
         print(f"  [{'OK' if good else '!!'}] {name:<16} {detail}")
 
+    from jamak import hw
+
     print(f"jamak {__version__}   home: {paths.home}")
+    if hw.IS_MAC:
+        try:
+            import mlx.core as mx
+            import mlx_whisper  # noqa: F401
+
+            metal = mx.metal.is_available()
+            row("Metal (STT)", metal, "mlx-whisper on the Apple GPU" if metal else "no Metal device (Intel Mac?)")
+        except ImportError as e:
+            row("mlx-whisper", False, f"cannot import: {e}")
+    else:
+        import ctranslate2  # noqa: F401  (fails loudly if the bundle lost its DLLs)
+    if args.bundled:  # only what ships in the app (build check); downloads come later
+        return 0 if ok else 1
     for tool in ("ffmpeg", "ffprobe"):
         try:
             p = audio._tool(tool)
         except audio.FfmpegError:
             p = None
         row(tool, bool(p), p or "not found (run the first-time setup in the app)")
-    n = cuda.cuda_device_count()
-    row("CUDA (STT)", n > 0, f"{n} device(s)" if n else "no CUDA device for CTranslate2 (STT will use CPU)")
+    if not hw.IS_MAC:
+        n = cuda.cuda_device_count()
+        row("CUDA (STT)", n > 0, f"{n} device(s)" if n else "no CUDA device for CTranslate2 (STT will use CPU)")
     exe = paths.llama_server_exe
-    row("llama-server", exe.exists(), str(exe) if exe.exists() else "missing - run scripts/setup_llama.ps1")
+    row("llama-server", exe.exists(), str(exe) if exe.exists() else "missing - get it in the app (Settings > Models)")
     m = default_llm_path()
     row("translation LLM", m is not None, str(m) if m else f"no *.gguf in {paths.models}")
     return 0 if ok else 1
@@ -296,7 +312,7 @@ def main(argv: list[str] | None = None) -> None:
                    help="re-run from this stage even if cached")
     t.set_defaults(fn=cmd_transcribe)
 
-    k = sub.add_parser("keys", help="manage API keys (stored encrypted with Windows DPAPI)")
+    k = sub.add_parser("keys", help="manage API keys (Windows DPAPI / macOS Keychain)")
     ks = k.add_subparsers(dest="action", required=True)
     ks.add_parser("list")
     ka = ks.add_parser("add")
@@ -322,7 +338,8 @@ def main(argv: list[str] | None = None) -> None:
         ps.add_parser(action).add_argument("name", help="profile name or id")
     pr.set_defaults(fn=cmd_profiles)
 
-    d = sub.add_parser("doctor", help="check ffmpeg, CUDA, llama-server, models")
+    d = sub.add_parser("doctor", help="check ffmpeg, CUDA / Metal, llama-server, models")
+    d.add_argument("--bundled", action="store_true", help="check only the speech-recognition engine (build check)")
     d.set_defaults(fn=cmd_doctor)
 
     s = sub.add_parser("serve", help="run the local API server")

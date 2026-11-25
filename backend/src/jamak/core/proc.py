@@ -3,13 +3,20 @@
 On Windows every child is placed in a Job Object with KILL_ON_JOB_CLOSE, so if this Python
 process dies (crash, Tauri kills the sidecar) the children (llama-server) die with it and
 never keep holding GPU memory or a port.
+
+macOS has no Job Objects: children are remembered and killed at normal exit (atexit, which uvicorn
+reaches on SIGTERM) and by the parent-pid watcher before it hard-exits. A SIGKILL of this process
+still leaves them running; llama-server then exits by itself only when its port is reused.
 """
 
 from __future__ import annotations
 
+import atexit
 import socket
 import subprocess
 import sys
+import threading
+import weakref
 
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
@@ -59,9 +66,30 @@ def _windows_job():
     return _job_handle
 
 
+_children: weakref.WeakSet[subprocess.Popen] = weakref.WeakSet()
+_children_lock = threading.Lock()
+
+
+def kill_children() -> None:
+    """Kill every child bound with bind_to_lifetime that is still running (POSIX)."""
+    with _children_lock:
+        procs = list(_children)
+    for p in procs:
+        try:
+            if p.poll() is None:
+                p.kill()
+        except OSError:
+            pass
+
+
+atexit.register(kill_children)
+
+
 def bind_to_lifetime(proc: subprocess.Popen) -> None:
-    """Kill `proc` automatically when this process exits (Windows only; no-op elsewhere)."""
+    """Kill `proc` automatically when this process exits (Job Object on Windows, exit hooks elsewhere)."""
     if sys.platform != "win32":
+        with _children_lock:
+            _children.add(proc)
         return
     job = _windows_job()
     if not job:
@@ -101,6 +129,7 @@ def exit_when_parent_dies(pid: int) -> None:
                 except OSError:
                     break
                 time.sleep(1.0)
+            kill_children()  # os._exit skips atexit
         os._exit(0)
 
     threading.Thread(target=watch, name="parent-watch", daemon=True).start()

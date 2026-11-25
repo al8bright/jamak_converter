@@ -186,7 +186,11 @@ class Store:
 
     def remove_key(self, key_id: int) -> bool:
         with self._conn() as con:
-            return con.execute("DELETE FROM api_keys WHERE id=?", (key_id,)).rowcount > 0
+            row = con.execute("SELECT secret FROM api_keys WHERE id=?", (key_id,)).fetchone()
+            gone = con.execute("DELETE FROM api_keys WHERE id=?", (key_id,)).rowcount > 0
+        if row is not None:
+            secrets.forget(bytes(row["secret"]))
+        return gone
 
     def key_secret(self, key_id: int) -> str:
         with self._conn() as con:

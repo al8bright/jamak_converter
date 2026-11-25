@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "./ctx";
-import { gb, isReady, type SetupComponent, toDownload, useSetup } from "./setupState";
+import { gb, isReady, memoryLabel, memoryNote, type SetupComponent, toDownload, useSetup } from "./setupState";
 import { Note, Page } from "./ui";
 
 export function ComponentState({ c }: { c: SetupComponent }) {
@@ -37,6 +37,8 @@ export function Setup({ onDone }: { onDone: (next?: "engine") => void }) {
   if (!status || !stt) return <Page eyebrow="SETUP" title="설치 확인"><p className="muted">확인하는 중…</p></Page>;
 
   const ids = ["ffmpeg", stt, ...(local ? ["llm"] : [])];
+  const llm = status.components.find((c) => c.id === "llm");
+  const localBytes = (llm?.approx_bytes ?? 0) + (status.components.find((c) => c.id === "llama")?.approx_bytes ?? 0);
   const todo = toDownload(status, ids);
   const remaining = todo.reduce((a, c) => a + Math.max(0, (c.total_bytes || c.approx_bytes) - c.done_bytes), 0);
   const shown = status.running ? status.components.filter((c) => !["present", "missing"].includes(c.status)) : todo;
@@ -59,7 +61,7 @@ export function Setup({ onDone }: { onDone: (next?: "engine") => void }) {
       {!status.running && !allDone && (
         <>
           <fieldset className="card" style={{ margin: 0 }}>
-            <legend><b>음성 인식 모델</b> <span className="small muted">한 개만 있으면 됩니다{status.vram_gb ? ` · 이 PC의 GPU 메모리 ${status.vram_gb}GB` : " · NVIDIA GPU를 찾지 못했습니다"}</span></legend>
+            <legend><b>음성 인식 모델</b> <span className="small muted">한 개만 있으면 됩니다 · {memoryNote(status)}</span></legend>
             <div className="stack" style={{ gap: 6 }}>
               {sttModels.map((c) => (
                 <label key={c.id} className="check">
@@ -70,7 +72,7 @@ export function Setup({ onDone }: { onDone: (next?: "engine") => void }) {
                       {c.id === status.recommended_stt && <span className="badge ok" style={{ marginLeft: 6 }}>이 PC에 추천</span>}
                       {isReady(c) && <span className="badge" style={{ marginLeft: 6 }}>받아 둠</span>}
                     </b>
-                    <span>{c.summary} · {gb(c.approx_bytes)}{c.vram_gb ? ` · GPU 메모리 약 ${c.vram_gb}GB` : ""}</span>
+                    <span>{c.summary} · {gb(c.approx_bytes)}{c.vram_gb ? ` · ${memoryLabel(status)} 약 ${c.vram_gb}GB` : ""}</span>
                   </span>
                 </label>
               ))}
@@ -82,7 +84,7 @@ export function Setup({ onDone }: { onDone: (next?: "engine") => void }) {
             <span className="check-text">
               <b>로컬 번역도 받기 (선택)</b>
               <span>
-                Gemma 4 12B와 llama-server, 약 {gb(7_680_000_000)}. 인터넷 없이 번역하며 GPU 메모리 9GB 이상이 필요합니다.
+                Gemma 4 12B와 llama-server, 약 {gb(localBytes)}. 인터넷 없이 번역하며 {memoryLabel(status)} {llm?.vram_gb ?? 9}GB 이상이 필요합니다.
                 받지 않으면 Claude, Gemini 같은 클라우드 번역을 씁니다.
               </span>
             </span>

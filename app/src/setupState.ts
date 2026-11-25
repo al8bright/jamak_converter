@@ -30,7 +30,20 @@ export interface SetupStatus {
   ready: { ok: boolean; ffmpeg: boolean; stt: string[]; local_translation: boolean; gpu: boolean };
   vram_gb: number | null;
   recommended_stt: string;
+  platform?: "win" | "mac";
+  accelerator?: "cuda" | "metal" | "cpu";
   free_bytes: number;
+}
+
+/** What model memory is called on this computer: VRAM on an NVIDIA card, part of unified memory on a Mac. */
+export function memoryLabel(s: SetupStatus): string {
+  return s.platform === "mac" ? "모델에 쓸 수 있는 메모리" : "GPU 메모리";
+}
+
+/** Text for the memory a computer can give models ("" when unknown). */
+export function memoryNote(s: SetupStatus): string {
+  if (s.vram_gb) return s.platform === "mac" ? `이 Mac에서 ${memoryLabel(s)} 약 ${s.vram_gb}GB` : `이 PC의 GPU 메모리 ${s.vram_gb}GB`;
+  return s.platform === "mac" ? "Apple Silicon이 아니라 매우 느립니다" : "NVIDIA GPU를 찾지 못했습니다";
 }
 
 /** First run: the app cannot make a subtitle until FFmpeg and one speech-recognition model are in place. */

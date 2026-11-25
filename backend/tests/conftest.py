@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,28 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "gpu" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_keychain(monkeypatch):
+    """On a Mac, tests must not write API keys into the login Keychain: use a dict instead."""
+    if sys.platform != "darwin":
+        return
+    from jamak.core import secrets
+
+    items: dict[tuple[str, str], str] = {}
+
+    class Memory:
+        def set_password(self, service, user, value):
+            items[(service, user)] = value
+
+        def get_password(self, service, user):
+            return items.get((service, user))
+
+        def delete_password(self, service, user):
+            items.pop((service, user))
+
+    monkeypatch.setattr(secrets, "_keychain", Memory)
 
 
 @pytest.fixture

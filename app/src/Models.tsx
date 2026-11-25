@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "./api";
 import { useApp } from "./ctx";
 import { ComponentState } from "./Setup";
-import { gb, isReady, type SetupComponent, toDownload, useSetup } from "./setupState";
+import { gb, isReady, memoryLabel, type SetupComponent, toDownload, useSetup } from "./setupState";
 import { Modal, Note, Page, SettingsTabs } from "./ui";
 
 const GROUPS: { kind: SetupComponent["kind"][]; title: string; note: string }[] = [
@@ -78,12 +78,12 @@ export function Models() {
                     {c.summary && <small>{c.summary}</small>}
                     <small className="muted">
                       {ready && c.disk_bytes ? `${gb(c.disk_bytes)} 사용` : `약 ${gb(c.approx_bytes)}`}
-                      {c.vram_gb ? ` · GPU 메모리 약 ${c.vram_gb}GB` : ""}
+                      {c.vram_gb ? ` · ${memoryLabel(status)} 약 ${c.vram_gb}GB` : ""}
                       {c.requires.length ? ` · 필요: ${c.requires.map(nameOf).join(", ")}` : ""}
                       {c.license ? ` · ${c.license}` : ""}
                     </small>
                     {c.vram_gb && status.vram_gb !== null && c.vram_gb > status.vram_gb && (
-                      <small className="warn-fg">이 PC의 GPU 메모리({status.vram_gb}GB)보다 많이 씁니다. 느리거나 실패할 수 있습니다.</small>
+                      <small className="warn-fg">이 {status.platform === "mac" ? "Mac" : "PC"}의 {memoryLabel(status)}({status.vram_gb}GB)보다 많이 씁니다. 느리거나 실패할 수 있습니다.</small>
                     )}
                   </div>
                   <div className="setup-state">

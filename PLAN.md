@@ -202,6 +202,26 @@
 
 > 아직 실제로 확인하지 못한 것: 새 서비스 7곳은 가짜 응답으로만 시험함(키 없음). 실제 키로 연결 테스트 필요. PyTorch 환경 설치는 이 PC의 uv로 확인했고, 앱의 받기 버튼으로 처음부터 받는 흐름(uv 내려받기 포함)은 사람이 한 번 눌러 봐야 함.
 
+## Phase 4.6 — Mac 지원 코드 (Apple Silicon, TODO.md에서 옮김)
+
+Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확인은 TODO.md 4장에 남아 있습니다.
+
+- [x] **플랫폼 구분** (`hw.py`): Windows·Mac별 모델 목록(`Spec.platforms`), 가속 확인(`cuda`/`metal`/`cpu`), Apple 칩 이름과 통합 메모리(`sysctl hw.memsize`). 모델 메모리는 통합 메모리의 70%로 계산(Metal이 GPU에 주는 몫)
+- [x] **음성 인식** (`core/stt/mlx_whisper.py`): mlx-whisper 0.4.3. 같은 모델 id(`large-v3`, `large-v3-turbo`, `kotoba-whisper-v2.0`)를 Mac에서는 MLX 변환본으로 받음(mlx-community 2개, kotoba는 `kaiinui` 변환본). 결과 형식이 openai-whisper와 같아 분할·환각 필터를 그대로 씀. 빔 서치가 없어(`NotImplementedError`) 넘기지 않음. VAD는 Qwen과 같은 Silero 구간을 30초 단위로 묶어 `clip_timestamps`로 넘김. 진행률과 취소는 mlx-whisper 안의 tqdm을 바꿔 끼워 받음. 캐시 키(`stt_identity`)에 엔진이 들어가 Windows 결과와 섞이지 않음
+- [x] **Mac에서 숨김**: CUDA 라이브러리, PyTorch 실행 환경, Qwen3-ASR. Whisper 항목의 `gpu_requires`도 비움
+- [x] **llama-server Metal 빌드**: `llama-b12675-bin-macos-arm64.tar.gz`(16.8MB, GitHub 공개 SHA-256). 맨 위 폴더를 벗기고 dylib 심볼릭 링크째 풀기(`filter="data"`)
+- [x] **FFmpeg**: BtbN에는 Mac 판이 없어 martin-riedl.de의 9.1 빌드(서명된 정적 빌드, GPL)를 받음. 같은 서버의 `.sha256`을 믿지 않고 해시와 크기를 코드에 고정. zip을 풀며 실행 권한을 붙임. `audio._tool`이 `.exe`를 붙이지 않게 수정
+- [x] **API 키**: macOS 로그인 키체인(`keyring`의 macOS 백엔드, Security.framework 직접 호출이라 키가 명령줄에 나오지 않음). DB에는 `keychain:<임의 id>`만 저장, 키를 지우면 키체인 항목도 지움. 오류 메시지에 키 원문이 들어가지 않게 예외를 감쌈. Windows에서 만든 DB를 Mac에서 열면 "다시 등록" 안내
+- [x] **하위 프로세스**: Job Object 대신 띄운 프로세스를 기억했다가 정상 종료(atexit)와 부모 감시 종료 때 kill
+- [x] **경로·화면**: 데이터 폴더 `~/Library/Application Support/jamak_converter`, Finder에서 보기(`open -R`), 시스템 점검의 GPU·CUDA 줄, 처음 실행·모델 관리의 "GPU 메모리" 문구를 Mac에서는 "모델에 쓸 수 있는 메모리"로. `/setup`·`/system`에 `platform`, `accelerator` 추가
+- [x] **의존성**: `mlx-whisper`·`keyring`은 Mac에만, NVIDIA 휠은 Windows에만(`pyproject.toml` 표시). uv 잠금 파일을 Windows와 macOS arm64 두 환경으로 풂. mlx 휠이 macOS 14부터라 최소 버전 14.0
+- [x] **빌드**: `tauri.macos.conf.json`(`.app`, `.dmg`), 사이드카 이름(`lib.rs`의 `SIDECAR`), PyInstaller spec의 Mac 분기(mlx dylib·metallib, mlx_whisper 자산, torch 제외), `scripts/build_app.sh`. 두 빌드 스크립트 모두 묶은 백엔드에서 `jamak doctor --bundled`(음성 인식 엔진을 불러오는지)를 확인
+- [x] **CI**: `.github/workflows/test.yml`. Windows·macos-14에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
+
+**완료 기준**: 백엔드 단위 테스트 107개 통과(GPU 테스트 2개 제외). Mac 경로 테스트 17개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
+
+> 아직 확인하지 못한 것: 실제 Mac에서 한 번도 돌려 보지 않았고, CI도 아직 돌리지 않음(push 전). PyInstaller Mac 묶음과 `.dmg`도 만들어 보지 않음.
+
 ## Phase 5 — 배포 (필요할 때)
 
 - [x] 백엔드를 PyInstaller로 묶기(onedir, `backend/packaging/jamak-backend.spec`). 264MB. CUDA DLL은 넣지 않음(아래)

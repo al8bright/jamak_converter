@@ -3,7 +3,7 @@
 //!
 //! Backend command, first match wins:
 //!   1. JAMAK_BACKEND_URL set      -> use an already running backend (no spawn)
-//!   2. release build and <resources>/backend/jamak-backend.exe exists (bundle)
+//!   2. release build and <resources>/backend/jamak-backend(.exe) exists (bundle)
 //!   3. otherwise (always in dev): `uv run --project <repo>/backend jamak serve`
 //! The backend gets `--port 0 --parent-pid <our pid>` and JAMAK_TOKEN=<random>; it prints
 //! `JAMAK_LISTENING <url>` once ready and exits by itself if this process dies.
@@ -58,13 +58,16 @@ fn random_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
+/// PyInstaller's output name: `.exe` on Windows, no extension on macOS.
+const SIDECAR: &str = if cfg!(windows) { "jamak-backend.exe" } else { "jamak-backend" };
+
 fn backend_command(app: &tauri::AppHandle) -> Command {
     let pid = std::process::id().to_string();
     let bundled = app
         .path()
         .resource_dir()
         .ok()
-        .map(|d| d.join("backend").join("jamak-backend.exe"))
+        .map(|d| d.join("backend").join(SIDECAR))
         // dev builds always run the backend from source: a stale PyInstaller copy can sit in
         // target/debug/backend after an installer build and would lack newer endpoints
         .filter(|p| !cfg!(debug_assertions) && p.exists());

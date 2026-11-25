@@ -21,6 +21,8 @@ def _default_home() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "jamak_converter"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "jamak_converter"
     return Path.home() / ".local" / "share" / "jamak_converter"
 
 

@@ -2,16 +2,20 @@
 
 The installer (installer.py) downloads these on demand; nothing large ships in the setup exe.
 `requires` lists what has to be installed with an item (CUDA only when an NVIDIA GPU is present).
+Windows and Mac (Apple Silicon) have their own lists (`platforms`): on a Mac the Whisper models are
+MLX conversions run by mlx-whisper on the Apple GPU, CUDA is not needed, and Qwen3-ASR (PyTorch)
+is left out until it has been tried on Apple's GPU (TODO.md 4장).
 VRAM figures were measured on a 105-minute film (PLAN.md Phase 4.5): beam 5 + word timestamps for Whisper,
 batch 8 + forced aligner for Qwen3-ASR.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
+from jamak import hw
 from jamak.config import paths
 
 Kind = Literal["tool", "runtime", "stt", "llm"]
@@ -35,34 +39,44 @@ class Spec:
     summary: str = ""  # one line for the model list
     removable: bool = True
     tags: tuple[str, ...] = field(default_factory=tuple)
+    platforms: tuple[hw.Platform, ...] = ("win", "mac")
 
 
-SPECS: list[Spec] = [
+WIN_ONLY: tuple[hw.Platform, ...] = ("win",)
+MAC_ONLY: tuple[hw.Platform, ...] = ("mac",)
+
+ALL_SPECS: list[Spec] = [
     Spec("ffmpeg", "tool", "FFmpeg (영상에서 소리 꺼내기)", 80_000_000, "LGPL 빌드, BtbN/FFmpeg-Builds", "LGPL",
-         removable=False),
+         removable=False, platforms=WIN_ONLY),
+    Spec("ffmpeg", "tool", "FFmpeg (영상에서 소리 꺼내기)", 57_200_000, "martin-riedl.de 빌드 (서명됨)", "GPL",
+         removable=False, platforms=MAC_ONLY),
     Spec("cuda", "runtime", "NVIDIA CUDA 라이브러리", 1_250_000_000, "cuBLAS, cuDNN (PyPI)", "NVIDIA",
-         summary="Whisper 계열 모델을 GPU로 돌릴 때 필요합니다"),
+         summary="Whisper 계열 모델을 GPU로 돌릴 때 필요합니다", platforms=WIN_ONLY),
     Spec("torch", "runtime", "PyTorch 실행 환경", 2_700_000_000, "Python 3.12 + PyTorch 2.14 (CUDA 12.6) · 설치 후 약 4.5GB",
-         "BSD 등", summary="Qwen3-ASR에 필요합니다. CUDA가 들어 있어 따로 받지 않습니다"),
+         "BSD 등", summary="Qwen3-ASR에 필요합니다. CUDA가 들어 있어 따로 받지 않습니다", platforms=WIN_ONLY),
     Spec("llama", "runtime", "llama-server (로컬 번역 엔진)", 700_000_000, "llama.cpp, CUDA 12.4", "MIT",
-         summary="로컬 번역에 필요합니다"),
+         summary="로컬 번역에 필요합니다", platforms=WIN_ONLY),
+    Spec("llama", "runtime", "llama-server (로컬 번역 엔진)", 16_800_000, "llama.cpp, Metal", "MIT",
+         summary="로컬 번역에 필요합니다", platforms=MAC_ONLY),
     Spec("large-v3", "stt", "Whisper large-v3", 3_090_000_000, "OpenAI · faster-whisper 변환본", "MIT",
          gpu_requires=("cuda",), vram_gb=5.7, engine="faster-whisper", repos=("Systran/faster-whisper-large-v3",),
          summary="가장 안정적입니다. 구두점이 거의 없고, 노래 구간을 환각 문구로 바꾸는 일이 있습니다",
-         tags=("기본",)),
+         tags=("기본",), platforms=WIN_ONLY),
     Spec("large-v3-turbo", "stt", "Whisper large-v3-turbo", 1_620_000_000, "OpenAI · faster-whisper 변환본", "MIT",
          gpu_requires=("cuda",), vram_gb=2.2, engine="faster-whisper",
          repos=("mobiuslabsgmbh/faster-whisper-large-v3-turbo",),
-         summary="large-v3보다 2.5배 빠르고 VRAM을 적게 씁니다. 정확도는 조금 낮습니다", tags=("빠름",)),
+         summary="large-v3보다 2.5배 빠르고 VRAM을 적게 씁니다. 정확도는 조금 낮습니다", tags=("빠름",),
+         platforms=WIN_ONLY),
     Spec("kotoba-whisper-v2.0", "stt", "kotoba-whisper v2.0", 1_520_000_000, "kotoba-tech · 일본어 특화 경량 모델",
          "Apache-2.0", gpu_requires=("cuda",), vram_gb=2.4, engine="faster-whisper",
          repos=("kotoba-tech/kotoba-whisper-v2.0-faster",),
-         summary="빠르지만 영화 비교에서 문장을 빠뜨리거나 같은 말을 반복했습니다", tags=("일본어 특화",)),
+         summary="빠르지만 영화 비교에서 문장을 빠뜨리거나 같은 말을 반복했습니다", tags=("일본어 특화",),
+         platforms=WIN_ONLY),
     Spec("qwen3-asr-1.7b", "stt", "Qwen3-ASR 1.7B", 6_200_000_000, "Alibaba Qwen · 인식 4.4GB + 시간 정렬 1.8GB",
          "Apache-2.0", requires=("torch",), vram_gb=7.5, engine="qwen-asr",
          repos=("Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ForcedAligner-0.6B"),
          summary="구두점이 있고 용어집을 인식에 반영합니다. 가끔 중국어가 섞이며 VRAM을 많이 씁니다",
-         tags=("구두점", "용어집 반영")),
+         tags=("구두점", "용어집 반영"), platforms=WIN_ONLY),
     # translation models (GGUF for llama-server). Only Gemma 4 12B has been tried on real jobs; the others
     # are candidates for the Phase 6 comparison. VRAM for them = file size + ~1.5 GB context (estimate).
     Spec("llm", "llm", "Gemma 4 12B (QAT Q4_0)", 6_980_000_000, "Google 공식 QAT 변환본", "Apache-2.0",
@@ -85,6 +99,32 @@ SPECS: list[Spec] = [
          summary="한 번에 3B만 계산하는 MoE입니다. 16GB GPU에서는 일부를 CPU 메모리로 돌려 느려집니다. 아직 비교 전입니다"),
 ]
 
+
+
+
+def _mac_whisper(win_id: str, repo: str, size: int, vram: float, note: str, license: str = "MIT") -> Spec:
+    """The Mac twin of a Whisper model: same id (options.json and the CLI stay the same), MLX weights."""
+    w = next(s for s in ALL_SPECS if s.id == win_id)
+    return replace(w, approx_bytes=size, note=note, license=license, gpu_requires=(), vram_gb=vram,
+                   engine="mlx-whisper", repos=(repo,), platforms=MAC_ONLY,
+                   summary=w.summary.replace("VRAM", "메모리") + " · Mac에서는 빔 서치 없이 인식합니다")
+
+
+ALL_SPECS += [
+    _mac_whisper("large-v3", "mlx-community/whisper-large-v3-mlx", 3_083_520_000, 5.0,
+                 "OpenAI · MLX 변환본 (mlx-community)"),
+    _mac_whisper("large-v3-turbo", "mlx-community/whisper-large-v3-turbo", 1_614_000_000, 2.5,
+                 "OpenAI · MLX 변환본 (mlx-community)"),
+    _mac_whisper("kotoba-whisper-v2.0", "kaiinui/kotoba-whisper-v2.0-mlx", 1_509_130_000, 2.5,
+                 "kotoba-tech · 다른 사람이 만든 MLX 변환본", "Apache-2.0"),
+]
+
+
+def specs_for(platform: hw.Platform) -> list[Spec]:
+    return [s for s in ALL_SPECS if platform in s.platforms]
+
+
+SPECS: list[Spec] = specs_for(hw.current())
 BY_ID: dict[str, Spec] = {s.id: s for s in SPECS}
 STT_IDS = [s.id for s in SPECS if s.kind == "stt"]
 LLM_IDS = [s.id for s in SPECS if s.kind == "llm"]
@@ -100,7 +140,7 @@ def spec(model_id: str) -> Spec | None:
 
 def hf_cache_dir(s: Spec) -> Path:
     """faster-whisper models use the cache layout faster-whisper itself uses (models/whisper);
-    PyTorch models get their own cache (models/hf)."""
+    PyTorch and MLX models get their own cache (models/hf)."""
     return paths.whisper_models if s.engine == "faster-whisper" else paths.models / "hf"
 
 
@@ -118,7 +158,7 @@ def snapshot(cache: Path, repo: str, marker: str) -> Path | None:
 
 
 def marker_for(s: Spec) -> str:
-    return "model.bin" if s.engine == "faster-whisper" else "*.safetensors"
+    return {"faster-whisper": "model.bin", "mlx-whisper": "weights.*"}.get(s.engine or "", "*.safetensors")
 
 
 def local_dirs(s: Spec) -> list[Path] | None:

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import sys
 import threading
 import time
@@ -13,7 +11,6 @@ from typing import Any
 import httpx
 
 from jamak.config import default_llm_path, paths
-from jamak.core.proc import CREATE_NO_WINDOW
 from jamak.core.store import Profile, Store, store
 
 _usage_lock = threading.Lock()
@@ -21,6 +18,10 @@ _usage_cache: tuple[float, dict[str, Any]] | None = None
 
 
 def cpu_name() -> str:
+    from jamak import hw
+
+    if hw.IS_MAC:
+        return hw.apple_chip() or "Mac"
     if sys.platform == "win32":
         try:
             import winreg
@@ -47,15 +48,9 @@ def short_cpu(name: str) -> str:
 
 
 def _nvidia_smi(query: str) -> list[list[str]]:
-    exe = shutil.which("nvidia-smi")
-    if not exe:
-        return []
-    try:
-        res = subprocess.run([exe, f"--query-gpu={query}", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=4, creationflags=CREATE_NO_WINDOW)
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    return [[p.strip() for p in line.split(",")] for line in res.stdout.strip().splitlines() if line.strip()]
+    from jamak import hw
+
+    return hw.nvidia_smi(query)
 
 
 def usage() -> dict[str, Any]:
@@ -139,10 +134,19 @@ def run_checks(sys_info: dict[str, Any], setup_status: list[dict[str, Any]], db:
 
     setup = {c["id"]: c for c in setup_status}
 
+    from jamak import hw
+
     gpus = sys_info.get("gpus") or []
-    if gpus:
+    if gpus and gpus[0].get("unified"):
+        g = gpus[0]
+        add("ok", "GPU", g["name"], f"Metal · 통합 메모리 {round(g['ram_total_mb'] / 1024)} GB "
+                                    f"(모델에 약 {round(g['memory_total_mb'] / 1024)} GB)")
+    elif gpus:
         g = gpus[0]
         add("ok", "GPU", g["name"], f"드라이버 {g['driver']} · VRAM {round(g['memory_total_mb'] / 1024)} GB")
+    elif hw.IS_MAC:
+        add("warn", "GPU", "Apple Silicon이 아닙니다", "Intel Mac",
+            "이 앱은 Apple Silicon(M 시리즈) Mac에서만 GPU를 씁니다. Intel Mac에서는 매우 느립니다.")
     else:
         add("warn", "GPU", "NVIDIA GPU를 찾지 못했습니다", "nvidia-smi 없음",
             "GPU가 없으면 음성 인식과 번역을 CPU로 처리해 매우 느립니다.")
@@ -152,7 +156,9 @@ def run_checks(sys_info: dict[str, Any], setup_status: list[dict[str, Any]], db:
         f"{psutil.cpu_count(logical=False)}코어 {psutil.cpu_count()}스레드 · RAM {vm.total / 1024**3:.1f} GB")
 
     cuda_c = setup.get("cuda", {})
-    if sys_info.get("cuda_devices"):
+    if hw.IS_MAC:
+        pass  # Metal needs nothing to download
+    elif sys_info.get("cuda_devices"):
         add("ok", "CUDA", "faster-whisper · CUDA float16 사용 가능", "cuBLAS 12 · cuDNN 9")
     elif cuda_c.get("status") in ("queued", "running"):
         add("warn", "CUDA", "CUDA 라이브러리 내려받는 중", _progress_text(cuda_c), bar=_bar(cuda_c))
