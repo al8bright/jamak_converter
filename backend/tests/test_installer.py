@@ -158,3 +158,23 @@ def test_runtime_files_are_packaged():
     pkgs = [ln.split("==")[0] for ln in lock.splitlines() if "==" in ln and not ln.startswith("#")]
     assert "gradio" not in pkgs and "vllm" not in pkgs
     assert ins.runtime_file("qwen_asr_worker.py").exists()
+
+
+def test_translation_models_are_separate_files(jamak_home, monkeypatch):
+    """Each GGUF in the list is its own item: present/remove look at its own file only, and local
+    translation is ready with any of them (plus llama-server)."""
+    from jamak import models
+    from jamak.config import paths
+
+    llms = [s for s in models.SPECS if s.kind == "llm"]
+    assert len(llms) >= 2 and len({s.gguf[1] for s in llms}) == len(llms)
+    assert all(s.gguf[0] and s.gguf[1].endswith(".gguf") and s.requires == ("llama",) for s in llms)
+    assert ins.with_dependencies(["qwen3.5-9b"], gpu=True) == ["llama", "qwen3.5-9b"]
+
+    monkeypatch.setattr(ins.LlamaComponent, "present", lambda self: True)
+    paths.models.mkdir(parents=True, exist_ok=True)
+    (paths.models / models.BY_ID["qwen3.5-9b"].gguf[1]).write_bytes(b"x")
+    assert ins.present("qwen3.5-9b") and not ins.present("llm")
+    assert ins.SetupManager().ready()["local_translation"]
+    ins.SetupManager().remove("qwen3.5-9b")
+    assert not ins.present("qwen3.5-9b") and not ins.SetupManager().ready()["local_translation"]

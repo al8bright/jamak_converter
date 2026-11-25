@@ -263,7 +263,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build_app.ps1
 | Whisper large-v3 / large-v3-turbo / kotoba-whisper-v2.0 | 3.1 / 1.6 / 1.5GB | 고른 모델만 |
 | Qwen3-ASR 1.7B + ForcedAligner | 6.2GB | Qwen을 고를 때 |
 | PyTorch 실행 환경 | 약 2.7GB (설치 후 4.5GB) | Qwen을 고르면 같이 받음. uv로 Python 3.12 환경을 만들고 해시가 고정된 목록(`runtime/qwen-requirements.lock`)으로 설치 |
-| llama-server + Gemma 4 12B | 0.7 + 7.0GB | 로컬 번역을 쓸 때 |
+| llama-server + Gemma 4 12B | 0.7 + 7.0GB | 로컬 번역을 쓸 때 (기본 번역 모델) |
+| 다른 번역 모델 (GGUF) | Qwen3.5 9B 5.7GB · Gemma 4 26B A4B 14.4GB · Mistral Small 3.2 24B 14.3GB · Qwen3.5 35B A3B 22.0GB | 고른 모델만. 받은 모델은 로컬 프로필에서 고름. Gemma 4 12B 외에는 아직 번역 비교 전(Phase 6) |
 
 ### 실행
 
@@ -380,5 +381,5 @@ jamak_converter/
 
 - Whisper 모델, faster-whisper, Silero VAD, Demucs, llama.cpp는 모두 MIT입니다. 각 LLM의 라이선스는 모델마다 다르므로 배포 전에 확인해야 합니다.
 - 설치 파일에는 이 앱과 Python 백엔드만 들어 있습니다. FFmpeg(LGPL 빌드, BtbN), NVIDIA cuBLAS·cuDNN(PyPI 휠), llama.cpp, 모델은 처음 실행할 때 각 배포처에서 사용자가 직접 내려받으므로 이 프로젝트가 재배포하지 않습니다. 받은 폴더에 각자의 라이선스 파일이 함께 저장됩니다.
-- 기본 번역 모델 Gemma 4는 Google의 Gemma 이용 약관을 따릅니다. 다른 GGUF를 쓰려면 `models` 폴더에 넣고 화면에서 고르면 됩니다.
+- 모델 관리에서 받을 수 있는 번역 모델(Gemma 4, Qwen3.5, Mistral Small 3.2)은 모두 Hugging Face 저장소 기준 Apache-2.0입니다. 목록에 없는 GGUF는 `models` 폴더에 넣고 화면에서 고르면 됩니다.
 - 보컬 분리(Demucs + PyTorch, 약 4GB)는 설치 파일에 넣지 않았습니다. 개발 환경에서 `uv sync --extra separation`으로만 쓸 수 있습니다.

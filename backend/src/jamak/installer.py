@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 
 from jamak import models
-from jamak.config import DEFAULT_LLM_FILE, default_llm_path, paths
+from jamak.config import default_llm_path, paths
 from jamak.models import Spec
 
 LLAMA_BUILD = "b12675"
@@ -34,7 +34,6 @@ CUDA_WHEELS = {  # the versions faster-whisper/CTranslate2 is tested with in thi
     "nvidia-cudnn-cu12": "9.28.1.4",
 }
 CUDA_DLLS = ("cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll")
-LLM_REPO = "google/gemma-4-12B-it-qat-q4_0-gguf"
 USER_AGENT = "jamak-installer"
 
 Progress = Callable[[int, int, str], None]  # done bytes, total bytes, message
@@ -316,26 +315,32 @@ class CudaComponent(Component):
 
 
 class LlmComponent(Component):
+    """One GGUF translation model, saved as models/<file name> (llama-server loads it from there)."""
+
+    @property
+    def path(self) -> Path:
+        return paths.models / self.spec.gguf[1]
+
     def present(self) -> bool:
-        return default_llm_path() is not None
+        return self.path.exists()
 
     def install(self, progress: Progress, cancel: threading.Event) -> None:
+        repo, name = self.spec.gguf
         with _client() as c:
-            r = c.get(f"https://huggingface.co/api/models/{LLM_REPO}/tree/main")
+            r = c.get(f"https://huggingface.co/api/models/{repo}/tree/main")
             r.raise_for_status()
             files = {f["path"]: f for f in r.json()}
-        f = files.get(DEFAULT_LLM_FILE)
+        f = files.get(name)
         if not f or not f.get("lfs"):
-            raise InstallError(f"{DEFAULT_LLM_FILE} not found in {LLM_REPO}")
-        download(f"https://huggingface.co/{LLM_REPO}/resolve/main/{DEFAULT_LLM_FILE}", paths.models / DEFAULT_LLM_FILE,
+            raise InstallError(f"{name} not found in {repo}")
+        download(f"https://huggingface.co/{repo}/resolve/main/{name}", self.path,
                  f["lfs"]["oid"], f["size"], progress, cancel)
 
     def remove(self) -> None:
-        (paths.models / DEFAULT_LLM_FILE).unlink(missing_ok=True)
+        self.path.unlink(missing_ok=True)
 
     def disk_bytes(self) -> int:
-        p = paths.models / DEFAULT_LLM_FILE
-        return p.stat().st_size if p.exists() else 0
+        return self.path.stat().st_size if self.path.exists() else 0
 
 
 # faster-whisper conversions whose alignment heads point at decoder layers the model does not have
@@ -540,8 +545,9 @@ class TorchComponent(Component):
 def _component(s: Spec) -> Component:
     if s.kind == "stt":
         return HfModelComponent(s)
-    return {"ffmpeg": FfmpegComponent, "cuda": CudaComponent, "torch": TorchComponent, "llama": LlamaComponent,
-            "llm": LlmComponent}[s.id](s)
+    if s.kind == "llm":
+        return LlmComponent(s)
+    return {"ffmpeg": FfmpegComponent, "cuda": CudaComponent, "torch": TorchComponent, "llama": LlamaComponent}[s.id](s)
 
 
 COMPONENTS: list[Component] = [_component(s) for s in models.SPECS]
@@ -628,7 +634,7 @@ class SetupManager:
         gpu = has_nvidia_gpu()
         stt = [s.id for s in models.SPECS if s.kind == "stt"
                and present(s.id) and all(present(d) for d in needs(s, gpu))]
-        local = present("llama") and present("llm")
+        local = present("llama") and default_llm_path() is not None
         return {"ffmpeg": present("ffmpeg"), "stt": stt, "local_translation": local, "gpu": gpu,
                 "ok": present("ffmpeg") and bool(stt)}
 

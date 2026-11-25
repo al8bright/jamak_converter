@@ -31,6 +31,7 @@ class Spec:
     vram_gb: float | None = None
     engine: str | None = None  # stt: "faster-whisper" | "qwen-asr"
     repos: tuple[str, ...] = ()  # Hugging Face repos (stt models)
+    gguf: tuple[str, str] = ("", "")  # llm: (Hugging Face repo, file name) saved as models/<file name>
     summary: str = ""  # one line for the model list
     removable: bool = True
     tags: tuple[str, ...] = field(default_factory=tuple)
@@ -62,12 +63,31 @@ SPECS: list[Spec] = [
          repos=("Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ForcedAligner-0.6B"),
          summary="구두점이 있고 용어집을 인식에 반영합니다. 가끔 중국어가 섞이며 VRAM을 많이 씁니다",
          tags=("구두점", "용어집 반영")),
-    Spec("llm", "llm", "번역 모델 Gemma 4 12B (QAT Q4_0)", 6_980_000_000, "Google", "Gemma 라이선스",
-         requires=("llama",), vram_gb=9.0, summary="이 PC에서 번역합니다. 클라우드 번역만 쓴다면 받지 않아도 됩니다"),
+    # translation models (GGUF for llama-server). Only Gemma 4 12B has been tried on real jobs; the others
+    # are candidates for the Phase 6 comparison. VRAM for them = file size + ~1.5 GB context (estimate).
+    Spec("llm", "llm", "Gemma 4 12B (QAT Q4_0)", 6_980_000_000, "Google 공식 QAT 변환본", "Apache-2.0",
+         requires=("llama",), vram_gb=9.0, gguf=("google/gemma-4-12B-it-qat-q4_0-gguf", "gemma-4-12b-it-qat-q4_0.gguf"),
+         summary="지금까지 실제 작업에 써 온 기본 모델입니다", tags=("기본",)),
+    Spec("qwen3.5-9b", "llm", "Qwen3.5 9B (Q4_K_M)", 5_680_000_000, "Alibaba Qwen · unsloth 변환본", "Apache-2.0",
+         requires=("llama",), vram_gb=7.5, gguf=("unsloth/Qwen3.5-9B-GGUF", "Qwen3.5-9B-Q4_K_M.gguf"),
+         summary="작고 빠릅니다. GPU 메모리가 8GB인 PC용 후보입니다. 아직 비교 전입니다", tags=("가벼움",)),
+    Spec("gemma-4-26b-a4b", "llm", "Gemma 4 26B A4B (QAT Q4_0)", 14_440_000_000, "Google 공식 QAT 변환본 · MoE",
+         "Apache-2.0", requires=("llama",), vram_gb=16.0,
+         gguf=("google/gemma-4-26B-A4B-it-qat-q4_0-gguf", "gemma-4-26B_q4_0-it.gguf"),
+         summary="한 번에 4B만 계산하는 MoE라 크기에 비해 빠릅니다. 아직 비교 전입니다"),
+    Spec("mistral-small-3.2-24b", "llm", "Mistral Small 3.2 24B (Q4_K_M)", 14_330_000_000,
+         "Mistral AI · unsloth 변환본", "Apache-2.0", requires=("llama",), vram_gb=16.0,
+         gguf=("unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF", "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"),
+         summary="지시를 잘 따릅니다. 일본어·한국어는 Qwen보다 약하다는 평가가 있습니다. 아직 비교 전입니다"),
+    Spec("qwen3.5-35b-a3b", "llm", "Qwen3.5 35B A3B (Q4_K_M)", 22_020_000_000, "Alibaba Qwen · unsloth 변환본 · MoE",
+         "Apache-2.0", requires=("llama",), vram_gb=23.5,
+         gguf=("unsloth/Qwen3.5-35B-A3B-GGUF", "Qwen3.5-35B-A3B-Q4_K_M.gguf"),
+         summary="한 번에 3B만 계산하는 MoE입니다. 16GB GPU에서는 일부를 CPU 메모리로 돌려 느려집니다. 아직 비교 전입니다"),
 ]
 
 BY_ID: dict[str, Spec] = {s.id: s for s in SPECS}
 STT_IDS = [s.id for s in SPECS if s.kind == "stt"]
+LLM_IDS = [s.id for s in SPECS if s.kind == "llm"]
 DEFAULT_STT = "large-v3"
 
 

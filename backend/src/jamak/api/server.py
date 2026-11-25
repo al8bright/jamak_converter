@@ -207,11 +207,13 @@ def system_info() -> dict[str, Any]:
             llama["build"] = json.loads(vfile.read_text(encoding="utf-8-sig")).get("build")
         except json.JSONDecodeError:
             pass
+    known = {s.gguf[1]: s.name for s in models.SPECS if s.kind == "llm"}
     ggufs = []
     if paths.models.exists():
         for p in sorted(paths.models.glob("*.gguf")):
             if not p.name.startswith("mmproj"):
-                ggufs.append({"name": p.name, "path": str(p), "size_gb": round(p.stat().st_size / 1e9, 2)})
+                ggufs.append({"name": known.get(p.name, p.name), "path": str(p),
+                              "size_gb": round(p.stat().st_size / 1e9, 2)})
     default = default_llm_path()
     from jamak.api.checks import cpu_name, short_cpu
 

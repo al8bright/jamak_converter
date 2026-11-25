@@ -7,7 +7,7 @@ import { Modal, Note, Page, SettingsTabs } from "./ui";
 
 const GROUPS: { kind: SetupComponent["kind"][]; title: string; note: string }[] = [
   { kind: ["stt"], title: "음성 인식", note: "작업마다 고를 수 있습니다. 한 개는 꼭 있어야 합니다." },
-  { kind: ["llm"], title: "로컬 번역", note: "클라우드 번역만 쓴다면 받지 않아도 됩니다." },
+  { kind: ["llm"], title: "로컬 번역", note: "받은 모델은 설정 › 번역 엔진의 로컬 프로필에서 고릅니다. 클라우드 번역만 쓴다면 받지 않아도 됩니다." },
   { kind: ["runtime", "tool"], title: "실행 환경과 도구", note: "모델을 받으면 필요한 것이 같이 받아집니다." },
 ];
 
