@@ -1,5 +1,6 @@
 # --- media / models / runtime (large or copyrighted) ---
 samples/
+file/
 *.mkv
 *.mp4
 *.avi

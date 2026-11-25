@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "Local Japanese -> Korean subtitle generator (faster-whisper / mlx-whisper + llama.cpp)"
 readme = "README.md"
 authors = [
-    { name = "Ethan", email = "al8bright@gmail.com" }
+    { name = "al8bright" }
 ]
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=2.13.0",

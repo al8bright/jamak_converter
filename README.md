@@ -403,6 +403,7 @@ jamak_converter/
 
 ## 8. 라이선스 메모
 
+- 이 프로젝트의 코드는 **MIT 라이선스**입니다([LICENSE](LICENSE)). 아래 외부 구성 요소와 모델은 각자의 라이선스를 따릅니다.
 - Whisper 모델, faster-whisper, Silero VAD, Demucs, llama.cpp는 모두 MIT입니다. 각 LLM의 라이선스는 모델마다 다르므로 배포 전에 확인해야 합니다.
 - 설치 파일에는 이 앱과 Python 백엔드만 들어 있습니다. FFmpeg(LGPL 빌드, BtbN), NVIDIA cuBLAS·cuDNN(PyPI 휠), llama.cpp, 모델은 처음 실행할 때 각 배포처에서 사용자가 직접 내려받으므로 이 프로젝트가 재배포하지 않습니다. 받은 폴더에 각자의 라이선스 파일이 함께 저장됩니다.
 - 모델 관리에서 받을 수 있는 번역 모델(Gemma 4, Qwen3.5, Mistral Small 3.2)은 모두 Hugging Face 저장소 기준 Apache-2.0입니다. 목록에 없는 GGUF는 `models` 폴더에 넣고 화면에서 고르면 됩니다.
