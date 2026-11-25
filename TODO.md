@@ -23,15 +23,15 @@
 
 ## 4. Mac 지원 (Apple Silicon)
 
-코드는 들어갔습니다(PLAN.md Phase 4.6). Windows에서 가짜 mlx-whisper·키체인으로 단위 테스트만 했고, **아래는 전부 실제 Mac이 있어야 합니다.** Intel Mac은 대상에서 뺍니다.
+코드는 들어갔습니다(PLAN.md Phase 4.6). 단위 테스트는 가짜 mlx-whisper·키체인으로, 음성 인식 연결부는 CI의 Mac 러너에서 진짜 mlx-whisper(whisper-tiny)로 확인했습니다. **아래는 전부 실제 Mac이 있어야 합니다**(CI 러너는 가상 머신이라 속도·전력·Neural Engine은 잴 수 없음). Intel Mac은 대상에서 뺍니다.
 
 ### 처음 확인 (Mac 한 대, M 시리즈 16GB 이상)
 
 - [ ] `pnpm tauri dev`로 처음 실행 → FFmpeg·llama-server·Whisper 받기 → 영화 한 편 처리까지
   - FFmpeg: martin-riedl.de zip을 풀고 실행 권한을 주는 부분, Gatekeeper가 막지 않는지
   - llama-server: tar.gz의 dylib 심볼릭 링크가 살아 있는지, `-ngl 99`로 Metal에 올라가는지
-- [ ] mlx-whisper 결과 확인: 단어 시간(`word_timestamps`)이 faster-whisper와 비슷한지, 빔 서치가 없어 정확도가 얼마나 떨어지는지, VAD 구간(`clip_timestamps`)을 넘겼을 때 시간이 원래 영상과 맞는지
-- [ ] 진행률이 오르고 취소가 바로 먹는지(tqdm을 바꿔 끼우는 방식, `core/stt/mlx_whisper.py`)
+- [ ] mlx-whisper 결과 확인(large-v3·turbo·kotoba, 실제 영화): 단어 시간이 faster-whisper와 비슷한지, 빔 서치가 없어 대사가 얼마나 빠지는지. 단어 시간·VAD 구간·진행률·취소가 동작하는 것 자체는 CI에서 whisper-tiny로 확인함
+- [ ] 인코더 재사용 효과 측정: 같은 영화를 재사용을 켜고 끈 채로 돌려 시간 비교(로그의 `encoder: N calls, M reused`). 예상은 turbo·kotoba 40% 안팎, large-v3 15~20% 단축이지만 추정값임
 - [ ] 키체인: 키 등록 → 앱 다시 열기 → 번역. 새 빌드에서 macOS가 키체인 접근을 묻는지
 - [ ] 하위 프로세스: 앱을 강제 종료했을 때 llama-server가 남는지(Mac에는 Job Object가 없어 정상 종료 때만 정리함)
 - [ ] 통합 메모리 70% 기준(`hw.METAL_SHARE`)으로 모델 경고가 맞는지. 16GB Mac에서 Whisper와 Gemma 12B를 차례로 쓸 때 메모리 압박
@@ -39,7 +39,9 @@
 ### 결정할 것
 
 - [ ] kotoba-whisper MLX 변환본: 지금은 `kaiinui/kotoba-whisper-v2.0-mlx`(다른 사람 변환, 내용 미확인). 같은 영화 구간에서 결과를 보고 그대로 둘지, 직접 변환본을 만들지
-- [ ] 대안 비교: whisper.cpp(Metal), WhisperKit(Core ML), macOS 26 SpeechAnalyzer. mlx-whisper 결과가 나쁘면 같은 구간으로 속도와 품질 비교
+- [ ] **Mac 빔 서치**: mlx-whisper는 빔 서치를 막아 둠(`decoding.py`의 `NotImplementedError`). Windows에서 같은 영화를 빔 5와 빔 1로 비교하니 빔 1이 24% 빠르지만 대사를 3곳(약 350자, 전체의 3%) 통째로 놓치고 반복 루프가 5곳(빔 5는 1곳·3곳)이었음(PLAN Phase 4.6). Mac에서 실제로 이 정도로 빠지면 openai-whisper(MIT)의 `BeamSearchDecoder`를 MLX로 옮겨 구현. Lightning-SimulWhisper에 MLX 구현이 있으나 PolyForm Noncommercial이라 코드를 가져올 수 없음
+- [ ] **CoreML 인코더(Neural Engine)**: 인코더만 CoreML로 돌리고 디코더는 MLX 그대로 두는 방식. 미리 변환된 인코더가 whisper.cpp의 Hugging Face 저장소에 있음(`ggml-large-v3-encoder.mlmodelc.zip` 1.18GB, turbo 1.17GB, MIT). kotoba-whisper v2.0은 인코더가 large-v3와 같아(가중치 견본 5개 일치) large-v3용을 그대로 쓸 수 있음. 끼울 자리는 `model.encoder` 한 곳(`EncoderOnce`와 같은 방식), 의존성은 coremltools(BSD, torch 불필요). 비용은 모델당 1.2GB 추가, 첫 실행 컴파일 시간. 이득은 미확인: 공개된 "3배"는 CPU 대비이고 Metal GPU 대비 수치는 없음. 속도와 전력(발열·배터리)을 재 보고 결정
+- [ ] 대안 비교: WhisperKit(Core ML), macOS 26 SpeechAnalyzer, whisper.cpp(Metal+CoreML, 빔 서치 있음. 단 릴리스에 macOS 실행 파일이 없어 직접 빌드·서명해야 함). mlx-whisper 결과가 나쁘면 같은 구간으로 속도와 품질 비교
 - [ ] Qwen3-ASR: PyTorch MPS에서 qwen-asr와 ForcedAligner가 도는지. 되면 Mac용 `qwen-requirements.lock`(PyPI)과 `bin/python` 경로로 PyTorch 실행 환경을 다시 켬. 지금은 Mac 목록에서 숨김
 - [ ] 개발 환경에 torch가 딸려 옴: mlx-whisper가 변환 스크립트 때문에 torch를 의존성으로 요구함(앱 묶음에서는 뺌). 신경 쓰이면 `--no-deps`로 따로 설치하는 방법 검토
 

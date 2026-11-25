@@ -216,11 +216,16 @@ Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확�
 - [x] **경로·화면**: 데이터 폴더 `~/Library/Application Support/jamak_converter`, Finder에서 보기(`open -R`), 시스템 점검의 GPU·CUDA 줄, 처음 실행·모델 관리의 "GPU 메모리" 문구를 Mac에서는 "모델에 쓸 수 있는 메모리"로. `/setup`·`/system`에 `platform`, `accelerator` 추가
 - [x] **의존성**: `mlx-whisper`·`keyring`은 Mac에만, NVIDIA 휠은 Windows에만(`pyproject.toml` 표시). uv 잠금 파일을 Windows와 macOS arm64 두 환경으로 풂. mlx 휠이 macOS 14부터라 최소 버전 14.0
 - [x] **빌드**: `tauri.macos.conf.json`(`.app`, `.dmg`), 사이드카 이름(`lib.rs`의 `SIDECAR`), PyInstaller spec의 Mac 분기(mlx dylib·metallib, mlx_whisper 자산, torch 제외), `scripts/build_app.sh`. 두 빌드 스크립트 모두 묶은 백엔드에서 `jamak doctor --bundled`(음성 인식 엔진을 불러오는지)를 확인
+- [x] **인코더 재사용** (`EncoderOnce`): mlx-whisper는 openai-whisper처럼 같은 30초 구간의 인코더를 인식할 때 한 번, 단어 시간을 맞출 때 또 한 번, 온도를 올려 다시 시도할 때마다 한 번씩 돌림(faster-whisper는 재사용). 마지막 입력과 같으면 결과를 다시 씀. 입력 비교는 `mx.array_equal`. 실패해도 작업은 계속(속도만 포기)
+- [x] **진짜 mlx-whisper 테스트** (`tests/test_mlx_e2e.py`, `pytest -m mlx`): whisper-tiny(75MB)와 Open JTalk 합성 대사(FFmpeg 없이 16kHz WAV)로 단어 시간, VAD 구간을 `clip_timestamps`로 넘겼을 때 원래 시간 유지, 진행률, 취소 후 다시 실행, 재사용을 켜고 꺼도 글자와 단어 시간이 같은지 확인. CI의 Mac 러너에서 실행
 - [x] **CI**: `.github/workflows/test.yml`. Windows·macos-latest에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
 
-**완료 기준**: 백엔드 단위 테스트 107개 통과(GPU 테스트 2개 제외). Mac 경로 테스트 17개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
+**완료 기준**: 백엔드 단위 테스트 110개 통과(GPU 2개, mlx 5개 제외). Mac 경로 테스트 20개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
 
 > CI (2026-11-25): GitHub의 macOS arm64 러너(macOS 26)에서 `uv sync --locked`, ruff, pytest 106개 통과(4개 건너뜀), `jamak doctor --bundled`가 `Metal (STT) mlx-whisper on the Apple GPU`로 통과. Windows 러너도 같은 결과. 테스트는 기본으로 Windows 모델 목록을 쓰고(conftest), 실제 기기가 자기 목록을 고르는지는 따로 확인함.
+> 진짜 mlx-whisper (2026-11-25, CI Mac 러너): 30.2초 합성 대사를 7줄로 인식, 줄 시작 시간이 정답과 0.1초 안(1.02 / 정답 1.00, 20.58 / 20.60, 26.20 / 26.14), 인코더 6번 호출 중 3번 재사용, 재사용 여부에 따라 결과 차이 없음. 5개 통과. whisper-tiny라 글자는 틀림(연결 확인용). 이 테스트가 가짜 모듈로는 안 보이던 버그를 하나 잡음: `import mlx_whisper.transcribe as mt`는 모듈이 아니라 함수를 줌(패키지가 같은 이름을 함수로 덮어씀) → `importlib.import_module`로 고침.
+> 빔 서치 비교 (2026-11-25, Windows large-v3, 105분 영화, 힌트·VAD 같음): 빔 5는 273초·991줄, 빔 1은 206초·1,029줄. 글자의 87%가 같음. 통째로 빠진 대사는 빔 1이 3곳(약 350자), 빔 5가 1곳(약 130자). 반복 루프는 빔 1이 5곳, 빔 5가 3곳. 환각 필터를 거친 자막은 844줄 / 852줄. 정답 자막이 없어 읽고 판단한 것이고 영화 한 편임. Mac에는 빔 서치가 없으므로 이 정도 손해가 예상되나, mlx-whisper로 직접 잰 것은 아님.
+> Lightning-SimulWhisper 검토 (2026-11-25): 실시간 스트리밍용(MLX 디코더 + CoreML 인코더)이고 PolyForm Noncommercial이라 쓰지 않음. 파일 전체를 인식하는 우리 용도와 맞지 않고 단어 시간·`avg_logprob`가 없음. 참고한 것은 CoreML 인코더와 MLX 빔 서치 두 가지(TODO 4장).
 > 아직 확인하지 못한 것: 실제 Mac에서 앱을 띄워 영상을 처리해 보지 않음. PyInstaller Mac 묶음과 `.dmg`도 만들어 보지 않음.
 
 ## Phase 5 — 배포 (필요할 때)

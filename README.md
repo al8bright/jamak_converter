@@ -328,17 +328,18 @@ uv run jamak profiles list
 cd backend
 uv run pytest            # 단위 테스트 (GPU 불필요)
 uv run pytest -m gpu -s  # 끝까지 실행하는 테스트 (CUDA, Whisper, llama-server 필요)
+uv run pytest -m mlx -s  # Mac 전용: 진짜 mlx-whisper(whisper-tiny 75MB를 받음). CI의 Mac 러너에서도 실행
 ```
 
 테스트용 영상은 저작권 문제가 없도록 Open JTalk(`pyopenjtalk`)로 일본어 대사를 합성해 자동으로 만듭니다(`tests/fixtures_gen.py`). 트랙이 두 개인 MKV(영어 무음 + 일본어 대사 + 배경음)라서 트랙 선택, 발화 감지, 인식, 번역을 한 번에 확인할 수 있습니다.
 
 ### Mac 지원 (Apple Silicon, 시험 전)
 
-Mac에는 NVIDIA GPU가 없으므로 Apple GPU(Metal)를 씁니다. 코드와 단위 테스트(가짜 mlx-whisper·키체인으로 Windows에서 실행)는 있지만 **실제 Mac에서는 아직 돌려 보지 않았습니다.** Intel Mac은 대상이 아닙니다.
+Mac에는 NVIDIA GPU가 없으므로 Apple GPU(Metal)를 씁니다. 단위 테스트는 가짜 mlx-whisper·키체인으로 Windows에서도 돌고, 음성 인식 연결부는 GitHub의 Mac 러너에서 진짜 mlx-whisper(whisper-tiny)로 확인합니다. 다만 **실제 Mac에서 앱을 띄워 영상을 처리해 보지는 않았습니다.** Intel Mac은 대상이 아닙니다.
 
 | | Windows | Mac (Apple Silicon) |
 |---|---|---|
-| 음성 인식 | faster-whisper (CUDA) | **mlx-whisper** (Metal). 같은 모델 id, MLX 변환본. 빔 서치 없음, Silero VAD 구간을 `clip_timestamps`로 넘김 |
+| 음성 인식 | faster-whisper (CUDA) | **mlx-whisper** (Metal). 같은 모델 id, MLX 변환본. 빔 서치 없음, Silero VAD 구간을 `clip_timestamps`로 넘김, 같은 구간의 인코더 결과는 재사용 |
 | Qwen3-ASR | PyTorch 실행 환경 | 목록에서 숨김 (MPS 시험 전) |
 | CUDA 라이브러리 | 받음 | 필요 없음 |
 | 번역 | llama-server CUDA 빌드 | llama-server **Metal** 빌드 (`macos-arm64.tar.gz`, 17MB) |
