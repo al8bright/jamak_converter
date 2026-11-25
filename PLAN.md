@@ -216,7 +216,7 @@ Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확�
 - [x] **경로·화면**: 데이터 폴더 `~/Library/Application Support/jamak_converter`, Finder에서 보기(`open -R`), 시스템 점검의 GPU·CUDA 줄, 처음 실행·모델 관리의 "GPU 메모리" 문구를 Mac에서는 "모델에 쓸 수 있는 메모리"로. `/setup`·`/system`에 `platform`, `accelerator` 추가
 - [x] **의존성**: `mlx-whisper`·`keyring`은 Mac에만, NVIDIA 휠은 Windows에만(`pyproject.toml` 표시). uv 잠금 파일을 Windows와 macOS arm64 두 환경으로 풂. mlx 휠이 macOS 14부터라 최소 버전 14.0
 - [x] **빌드**: `tauri.macos.conf.json`(`.app`, `.dmg`), 사이드카 이름(`lib.rs`의 `SIDECAR`), PyInstaller spec의 Mac 분기(mlx dylib·metallib, mlx_whisper 자산, torch 제외), `scripts/build_app.sh`. 두 빌드 스크립트 모두 묶은 백엔드에서 `jamak doctor --bundled`(음성 인식 엔진을 불러오는지)를 확인
-- [x] **CI**: `.github/workflows/test.yml`. Windows·macos-14에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
+- [x] **CI**: `.github/workflows/test.yml`. Windows·macos-latest에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
 
 **완료 기준**: 백엔드 단위 테스트 107개 통과(GPU 테스트 2개 제외). Mac 경로 테스트 17개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
 
