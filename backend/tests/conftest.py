@@ -22,6 +22,29 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+from jamak import models as _models  # noqa: E402
+
+HOST_SPECS = list(_models.SPECS)  # the list this machine really uses (checked in test_mac.py)
+
+
+@pytest.fixture(autouse=True)
+def _windows_model_list(monkeypatch):
+    """Tests are written against the Windows model list (CUDA, Qwen3-ASR, faster-whisper ids), so they
+    give the same result on a Mac runner. Mac paths are tested on purpose in test_mac.py."""
+    import jamak.installer as ins
+    from jamak import hw
+
+    win = _models.specs_for("win")
+    monkeypatch.setattr(hw, "IS_MAC", False)
+    monkeypatch.setattr(_models, "SPECS", win)
+    monkeypatch.setattr(_models, "BY_ID", {s.id: s for s in win})
+    monkeypatch.setattr(_models, "STT_IDS", [s.id for s in win if s.kind == "stt"])
+    monkeypatch.setattr(_models, "LLM_IDS", [s.id for s in win if s.kind == "llm"])
+    comps = [ins._component(s) for s in win]
+    monkeypatch.setattr(ins, "COMPONENTS", comps)
+    monkeypatch.setattr(ins, "_BY_ID", {c.id: c for c in comps})
+
+
 @pytest.fixture(autouse=True)
 def _no_real_keychain(monkeypatch):
     """On a Mac, tests must not write API keys into the login Keychain: use a dict instead."""

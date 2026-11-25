@@ -34,6 +34,14 @@ def test_mac_model_list():
         assert len(ids) == len(set(ids))
 
 
+def test_host_uses_its_own_list():
+    from tests.conftest import HOST_SPECS
+
+    assert HOST_SPECS == models.specs_for(hw.current())
+    engines = {s.engine for s in HOST_SPECS if s.kind == "stt"}
+    assert engines == ({"mlx-whisper"} if sys.platform == "darwin" else {"faster-whisper", "qwen-asr"})
+
+
 def test_stt_identity_includes_engine(monkeypatch):
     from jamak.core.pipeline import PipelineOptions, stt_identity
 
