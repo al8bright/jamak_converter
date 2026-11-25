@@ -220,7 +220,8 @@ Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확�
 
 **완료 기준**: 백엔드 단위 테스트 107개 통과(GPU 테스트 2개 제외). Mac 경로 테스트 17개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
 
-> 아직 확인하지 못한 것: 실제 Mac에서 한 번도 돌려 보지 않았고, CI도 아직 돌리지 않음(push 전). PyInstaller Mac 묶음과 `.dmg`도 만들어 보지 않음.
+> CI (2026-11-25): GitHub의 macOS arm64 러너(macOS 26)에서 `uv sync --locked`, ruff, pytest 106개 통과(4개 건너뜀), `jamak doctor --bundled`가 `Metal (STT) mlx-whisper on the Apple GPU`로 통과. Windows 러너도 같은 결과. 테스트는 기본으로 Windows 모델 목록을 쓰고(conftest), 실제 기기가 자기 목록을 고르는지는 따로 확인함.
+> 아직 확인하지 못한 것: 실제 Mac에서 앱을 띄워 영상을 처리해 보지 않음. PyInstaller Mac 묶음과 `.dmg`도 만들어 보지 않음.
 
 ## Phase 5 — 배포 (필요할 때)
 

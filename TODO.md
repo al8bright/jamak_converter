@@ -27,7 +27,6 @@
 
 ### 처음 확인 (Mac 한 대, M 시리즈 16GB 이상)
 
-- [ ] `uv sync` → `uv run pytest` → `uv run jamak doctor --bundled`가 통과하는지. CI(`.github/workflows/test.yml`, macos-latest)를 한 번 돌리면 먼저 알 수 있음
 - [ ] `pnpm tauri dev`로 처음 실행 → FFmpeg·llama-server·Whisper 받기 → 영화 한 편 처리까지
   - FFmpeg: martin-riedl.de zip을 풀고 실행 권한을 주는 부분, Gatekeeper가 막지 않는지
   - llama-server: tar.gz의 dylib 심볼릭 링크가 살아 있는지, `-ngl 99`로 Metal에 올라가는지
