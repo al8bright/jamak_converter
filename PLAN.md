@@ -220,7 +220,7 @@ Mac이 없는 상태에서 먼저 만들어 둔 부분입니다. 실제 Mac 확�
 - [x] **빌드**: `tauri.macos.conf.json`(`.app`, `.dmg`), 사이드카 이름(`lib.rs`의 `SIDECAR`), PyInstaller spec의 Mac 분기(mlx dylib·metallib, mlx_whisper 자산, torch 제외), `scripts/build_app.sh`. 두 빌드 스크립트 모두 묶은 백엔드에서 `jamak doctor --bundled`(음성 인식 엔진을 불러오는지)를 확인
 - [x] **인코더 재사용** (`EncoderOnce`): mlx-whisper는 openai-whisper처럼 같은 30초 구간의 인코더를 인식할 때 한 번, 단어 시간을 맞출 때 또 한 번, 온도를 올려 다시 시도할 때마다 한 번씩 돌림(faster-whisper는 재사용). 마지막 입력과 같으면 결과를 다시 씀. 입력 비교는 `mx.array_equal`. 실패해도 작업은 계속(속도만 포기)
 - [x] **진짜 mlx-whisper 테스트** (`tests/test_mlx_e2e.py`, `pytest -m mlx`): whisper-tiny(75MB)와 Open JTalk 합성 대사(FFmpeg 없이 16kHz WAV)로 단어 시간, VAD 구간을 `clip_timestamps`로 넘겼을 때 원래 시간 유지, 진행률, 취소 후 다시 실행, 재사용을 켜고 꺼도 글자와 단어 시간이 같은지 확인. CI의 Mac 러너에서 실행
-- [x] **CI**: `.github/workflows/test.yml`. Windows·macos-latest에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
+- [x] **CI**: `.github/workflows/ci.yml`(공통)과 `extra.yml`(Mac). Windows·macos-latest에서 ruff, pytest, `doctor --bundled`, UI `tsc`. 테스트는 Mac에서도 실제 키체인을 건드리지 않음(conftest)
 
 **완료 기준**: 백엔드 단위 테스트 110개 통과(GPU 2개, mlx 5개 제외). Mac 경로 테스트 20개(`tests/test_mac.py`)는 플랫폼을 바꿔 끼우고 가짜 mlx-whisper·키체인으로 Windows에서 실행. Windows 동작은 그대로(`/setup` 목록·추천 모델 동일). `tsc`, `cargo check` 통과.
 

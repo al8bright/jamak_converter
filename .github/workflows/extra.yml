@@ -1,0 +1,44 @@
+# jamak 고유 검사: macOS(Apple Silicon) 백엔드와 음성 인식 엔진 확인. 공통 검사는 ci.yml.
+name: extra
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    name: Speech engine check (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run jamak doctor --bundled
+
+  macos:
+    name: Backend (macOS arm64)
+    runs-on: macos-latest  # Apple Silicon
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run pytest -q
+      - run: uv run jamak doctor --bundled
+      # real mlx-whisper (whisper-tiny) on the Apple GPU: word times, VAD spans, progress, cancel, encoder reuse
+      - run: uv run pytest -q -m mlx -s

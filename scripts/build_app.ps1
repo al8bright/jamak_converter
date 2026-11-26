@@ -27,12 +27,29 @@ try {
     foreach ($f in "qwen_asr_worker.py", "qwen-requirements.lock") {
         if (-not (Test-Path ".\dist\jamak-backend\_internal\jamak\runtime\$f")) { throw "runtime/$f is missing from the bundle" }
     }
+
+    # Licenses of everything the installer ships (THIRD_PARTY_NOTICES.md explains them).
+    # The NVIDIA wheels are excluded from the bundle (see the spec), so they are left out here too.
+    $lic = New-Item -ItemType Directory -Force ".\dist\jamak-backend\licenses"
+    Copy-Item (Join-Path $root "LICENSE") (Join-Path $lic "LICENSE.txt") -Force
+    Copy-Item (Join-Path $root "THIRD_PARTY_NOTICES.md") $lic -Force
+    $collect = Join-Path $root "scripts\collect_licenses.py"
+    uv export --no-dev --no-hashes --format requirements-txt `
+        --no-emit-package nvidia-cublas-cu12 --no-emit-package nvidia-cudnn-cu12 --no-emit-package nvidia-cuda-nvrtc-cu12 |
+        uv run python $collect python (Join-Path $lic "python-packages.txt")
+    if ($LASTEXITCODE) { throw "collecting Python package licenses failed" }
+    uv run python $collect cargo (Join-Path $root "app\src-tauri") (Join-Path $lic "rust-crates.txt")
+    if ($LASTEXITCODE) { throw "collecting Rust crate licenses failed" }
 } finally { Pop-Location }
 
 Push-Location (Join-Path $root "app")
 try {
     pnpm install --frozen-lockfile
     if ($LASTEXITCODE) { throw "pnpm install failed" }
+    # needs node_modules, so it runs here rather than with the other licenses
+    $jsLicenses = Join-Path $root "backend\dist\jamak-backend\licenses\js-packages.txt"
+    uv run --project (Join-Path $root "backend") python (Join-Path $root "scripts\collect_licenses.py") npm . $jsLicenses
+    if ($LASTEXITCODE) { throw "collecting JavaScript package licenses failed" }
     pnpm tauri build
     if ($LASTEXITCODE) { throw "tauri build failed" }
 } finally { Pop-Location }

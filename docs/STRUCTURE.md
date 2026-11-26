@@ -34,28 +34,33 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 ├─ app/                       # 화면과 창
 │  ├─ src/                    # React 19 + TypeScript
 │  │  ├─ main.tsx  App.tsx    # 진입점, 틀(사이드바·하단 상태 줄·닫기 확인)
-│  │  ├─ api.ts               # 백엔드 연결(connect·api·events)과 응답 타입
+│  │  ├─ appInfo.ts           # 앱 고유 값: 이름, 개발용 포트
+│  │  ├─ backend.ts           # 백엔드 연결(connect·api·socket). 공통
+│  │  ├─ api.ts               # 이벤트와 응답 타입(앱 고유)
 │  │  ├─ ctx.ts               # 앱 전체 상태(Context)
 │  │  ├─ ui.tsx               # 공통 부품(Icon, Modal, Bar …)
 │  │  ├─ index.css            # 디자인 토큰(:root)과 클래스
 │  │  └─ <Screen>.tsx         # 화면 하나에 파일 하나
 │  ├─ src-tauri/              # Tauri 2 셸
-│  │  ├─ src/lib.rs  main.rs  # 백엔드 실행·토큰·종료
-│  │  ├─ build.rs             # 빈 backend 폴더를 만들어 개발 빌드가 되게 함
+│  │  ├─ src/lib.rs  main.rs  # 백엔드 실행·토큰·종료. 공통
+│  │  ├─ src/app_info.rs      # 앱 고유 값: 환경 변수 접두사, 명령 이름, 시작 대기 시간
+│  │  ├─ build.rs             # 빈 backend 폴더를 만들어 개발 빌드가 되게 함. 공통
 │  │  ├─ capabilities/default.json
 │  │  └─ tauri.conf.json
 │  ├─ package.json  vite.config.ts  tsconfig*.json  .oxlintrc.json
 ├─ backend/
 │  ├─ src/<pkg>/
 │  │  ├─ __init__.py  cli.py  config.py
-│  │  ├─ api/server.py        # HTTP·WebSocket (화면이 쓰는 유일한 통로)
+│  │  ├─ app_info.py          # 앱 고유 값: 이름, 환경 변수 접두사, 포트
+│  │  ├─ api/base.py          # 보안(Host·토큰·CORS), /health, serve. 공통
+│  │  ├─ api/server.py        # HTTP·WebSocket 경로 (화면이 쓰는 유일한 통로)
 │  │  └─ core/                # 실제 일. proc.py(프로세스 수명)는 공통
-│  ├─ tests/
+│  ├─ tests/                  # test_common.py는 공통
 │  ├─ packaging/entry.py  <pkg>-backend.spec
 │  ├─ pyproject.toml  uv.lock  .python-version
 ├─ scripts/build_app.ps1      # 설치 파일 빌드
-├─ scripts/collect_licenses.py
-├─ .github/workflows/ci.yml
+├─ scripts/collect_licenses.py  check_structure.py
+├─ .github/workflows/ci.yml   # 공통 검사. 앱 고유 검사는 extra.yml
 ├─ README.md  DESIGN.md  PLAN.md  LICENSE  THIRD_PARTY_NOTICES.md
 └─ .gitignore  .gitattributes
 ```
@@ -66,25 +71,32 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 
 ### (가) 네 곳이 같은 파일
 
-앱 이름(패키지, 환경 변수, 포트)만 바꾸면 내용이 같아야 하는 파일입니다. 한 곳에서 고치면 나머지 세 곳에도 옮깁니다.
+네 저장소에서 **글자 하나까지 같은** 파일입니다(줄 끝만 무시). 앱마다 다른 이름·포트는 파일에 쓰지 않고
+층마다 하나씩 있는 앱 고유 파일에서 읽습니다.
+
+| 층 | 앱 고유 값 | 읽는 공통 파일 |
+|---|---|---|
+| 백엔드 | `backend/src/<pkg>/app_info.py` (`NAME`, `ENV`, `PORT`, `VITE_PORT`) | `api/base.py`, `tests/test_common.py` |
+| Tauri | `app/src-tauri/src/app_info.rs` (`ENV`, `CLI`, `SIDECAR`, `STARTUP_SECS`) | `lib.rs` |
+| 화면 | `app/src/appInfo.ts` (`NAME`, `DEV_BACKEND_PORT`, `VITE_PORT`) | `backend.ts`, `vite.config.ts` |
 
 | 파일 | 내용 |
 |---|---|
-| `app/src-tauri/src/lib.rs`, `main.rs`, `build.rs` | 백엔드 찾기(환경 변수 → 묶음 → `uv run`), 임의 토큰, `--port 0 --parent-pid`, `<PKG>_LISTENING` 읽기, 종료 |
-| `app/src-tauri/capabilities/default.json` | `core:default`, `core:window:allow-destroy`, 필요한 대화 상자 권한 |
-| `app/src/api.ts`의 연결부 | `inTauri`, `connect`, `ApiError`, `api.get/post/put/patch/del` |
-| `app/src/ui.tsx`의 기본 부품 | `Icon`, `Modal`, `Bar`, `Chip`, `Check`, `Empty`, `Ellipsis` |
-| `app/src/index.css`의 토큰과 기본 규칙 | `:root` 팔레트·서체·크기, 버튼·입력·모달·배지·진행 바 |
-| `app/.oxlintrc.json`, `tsconfig*.json`, `vite.config.ts` | 포트만 다름. `woff2Only` 플러그인 포함 |
-| `backend/src/<pkg>/core/proc.py` | Job Object, 부모 감시, 빈 포트, 하위 프로세스 종료 |
-| `backend/src/<pkg>/api/server.py`의 뼈대 | 허용 Host·Origin, 토큰 검사, `/health`, `serve()` |
-| `backend/src/<pkg>/cli.py`의 뼈대 | `serve`, `doctor [--bundled]`, `--version` |
-| `backend/packaging/entry.py` | PyInstaller 진입점 |
-| `backend/pyproject.toml`의 도구 설정 | ruff·pytest 설정, `uv_build`, dev 의존성 |
-| `.github/workflows/ci.yml` | 백엔드(uv sync → ruff → pytest), 화면(lint → build → `cargo check`) |
-| `scripts/collect_licenses.py`, `.gitattributes`, `LICENSE` | |
+| `app/src-tauri/src/lib.rs`, `main.rs`, `build.rs` | 백엔드 찾기(환경 변수 → 묶음 → `uv run`), 임의 토큰, `--port 0 --parent-pid`, `<ENV>_LISTENING` 읽기, Mac은 SIGTERM 후 3초 기다려 종료. Cargo의 `[lib] name`은 네 앱 모두 `app_lib` |
+| `app/src/backend.ts` | `inTauri`, `connect`, `ApiError`, `api.get/post/put/patch/del`, `socket(경로, 받기, 연결 상태)`. 브라우저 개발 때 주소는 `VITE_BACKEND_URL` |
+| `app/.oxlintrc.json`, `tsconfig*.json`, `vite.config.ts`, `.gitignore`, `src-tauri/.gitignore` | `woff2Only` 플러그인, 고정 Vite 포트, `src-tauri` 감시 제외 |
+| `backend/src/<pkg>/api/base.py` | 허용 Host·Origin, 토큰 검사(`X-<Name>-Token`, WebSocket `?token=`), `/health`, `serve` 명령과 `serve()` |
+| `backend/src/<pkg>/core/proc.py` | Job Object(자신 묶기 / 자식 하나 묶기), 부모 감시, 빈 포트, 하위 프로세스·FFmpeg 종료, 기본 프로그램으로 열기 |
+| `backend/tests/test_common.py` | 위 두 파일의 테스트 |
+| `backend/packaging/entry.py` | PyInstaller 진입점. 앱 이름이 들어 있는 유일한 공통 파일(점검 스크립트가 이름을 바꿔 비교) |
+| `.github/workflows/ci.yml` | 백엔드(uv sync → ruff → pytest), 화면(lint → build → `cargo check`). Windows만 |
+| `scripts/collect_licenses.py`, `scripts/check_structure.py`, `.gitattributes`, `LICENSE` | |
 
-`api.ts`·`ui.tsx`·`index.css`·`server.py`·`cli.py`는 파일 안에 "여기부터 앱 고유" 경계를 주석 한 줄로 표시하고, 그 위쪽만 같게 유지합니다.
+목록은 `scripts/check_structure.py`의 `SHARED`가 기준입니다. 공통 파일을 고치면 그 스크립트의 `--copy-from`으로
+다른 저장소에 옮기고, 각 저장소에서 스크립트를 돌려 "모두 같음"을 확인합니다.
+
+`ui.tsx`의 기본 부품(`Icon`, `Modal`, `Bar`, `Chip`, `Check`, `Empty`, `Ellipsis`)과 `index.css`의 토큰·기본 규칙도
+공통으로 만들 예정입니다(6장 1-2). 지금은 (나)입니다.
 
 ### (나) 모양은 같고 내용은 앱마다 다른 파일
 
@@ -97,6 +109,10 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 | `README.md` | 빠른 시작 → 기능 → 화면 → 기술 스택 → 소스로 실행 → 파일 구성 → 라이선스 |
 | `DESIGN.md` | 원칙 → 화면 구성 → 토큰 → 부품 |
 | `tests/conftest.py` | 임시 데이터 폴더 fixture |
+| `app/src-tauri/capabilities/default.json` | `core:default`, `core:window:allow-destroy`, 그 앱에 필요한 대화 상자 권한만 |
+| `api/server.py`, `cli.py` | 보안·`serve`는 `base.py`에 맡긴다(`base.secure`, `base.ws_allowed`, `add_serve_command`) |
+| `.github/workflows/extra.yml` | 있으면 그 앱만의 검사(jamak: macOS 러너, `doctor --bundled`) |
+| `THIRD_PARTY_NOTICES.md` | 처음 실행 때 받는 것 → 백엔드 → 앱 창 순서의 표 |
 
 ### (다) 앱 고유
 
@@ -142,33 +158,33 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 
 ---
 
-## 5. 지금의 차이 (2026-11-26)
+## 5. 공통 파일을 맞출 때 합친 것 (2026-11-26)
 
-이미 전환된 두 앱도 공통 파일이 서로 달라져 있습니다. 앱 이름을 같게 치환한 뒤 비교한 줄 수입니다.
+jamak과 youtube_down의 판을 합치며 두 쪽의 좋은 점을 골랐습니다.
 
-| 파일 | jamak | youtube_down | 다른 줄 | 주된 차이 |
-|---|---|---|---|---|
-| `lib.rs` | 206 | 189 | 41 | 오류 문구 언어, Mac 종료 절차(jamak만), `VIRTUAL_ENV` 제거(youtube만) |
-| `ui.tsx` | 141 | 110 | 147 | 부품 구성이 다름(`Page`·`Note` / `Screen`·`Chip`·`Bar`) |
-| `index.css` | 444 | 365 | 671 | 토큰 이름과 클래스가 다름 |
-| `api.ts` 연결부 | 84 | 89 | 약 20 | 주석 언어, `patch`, 오류 문구 |
-| `proc.py` | 143 | 207 | 258 | jamak은 하위 프로세스를 묶고, youtube는 자신을 묶고 FFmpeg를 찾아 끊음 |
-| `build_app.ps1` | 42 | 151 | 135 | youtube는 FFmpeg·Deno를 넣고 라이선스를 모음 |
-| CI | `test.yml` | `ci.yml` | — | jamak은 Mac 러너 포함, `cargo check`·lint 없음. youtube는 Windows만 |
+| 파일 | 고른 것 |
+|---|---|
+| `lib.rs` | 한국어 오류 문구·`VIRTUAL_ENV` 제거(youtube), Mac SIGTERM 종료(jamak). 시작 대기는 앱마다(jamak 120초, youtube 60초) |
+| `proc.py` | 자신을 Job에 묶기(youtube)를 기본으로, 자식 하나 묶기(jamak)는 대비책과 Mac 종료용으로 |
+| `backend.ts` | `patch`(jamak), 한국어 주석·오류 문구(youtube). WebSocket 다시 붙기는 `socket()` 하나로 |
+| `vite.config.ts`, `package.json` | `woff2Only`·고정 포트·`tauri` 스크립트·`license`(youtube) |
+| CI | Windows 공통 검사 + `cargo check`·lint(youtube), jamak의 Mac 검사는 `extra.yml`로 |
+| `collect_licenses.py` | 앱 이름을 `pyproject.toml`에서 읽게 바꿔 jamak에도 넣음. jamak에 `THIRD_PARTY_NOTICES.md` 추가 |
+| `.gitattributes` | jamak 것을 youtube에 넣음 |
 
-한쪽에만 있는 것:
-
-- jamak에만: Mac 지원, `.gitattributes`, `tests/__init__.py`, 중단된 작업 삭제(`purge_interrupted`), 테마 4종.
-- youtube_down에만: `THIRD_PARTY_NOTICES.md`·`collect_licenses.py`, `woff2Only`, `package.json`의 `tauri` 스크립트, 고정된 Vite 포트, 한국어 셸 오류 문구.
+남은 차이: `ui.tsx`(부품 구성), `index.css`(토큰 이름·클래스, jamak의 `.bar`는 로고 아래 줄이고 youtube의 `.bar`는 진행 바),
+`build_app.ps1`(youtube는 FFmpeg·Deno를 넣음. 앱마다 다른 것이 맞음).
 
 ---
 
 ## 6. 진행 순서
 
-1. **공통 파일 확정** — (가) 목록의 파일을 jamak과 youtube_down에서 하나로 맞춥니다. 각 파일마다 두 쪽의 좋은 점을 합친 판을 만들고 두 저장소에 넣습니다. 두 앱 모두 동작이 바뀌지 않아야 하므로 실제 앱으로 확인합니다.
-2. **video_converter 전환** — 1번에서 확정한 파일로 시작합니다. 계획은 video_converter의 `PLAN.md`.
+1. **공통 파일 확정**
+   1. 백엔드·Tauri 셸·연결 코드·설정·CI·스크립트 — 끝남(2026-11-26). 두 앱을 개발 모드로 띄워 백엔드 연결과 종료를 확인했습니다.
+   2. `ui.tsx` 기본 부품과 `index.css` 토큰 — 두 앱의 모든 화면을 바꾸기 전후로 찍어 비교하며 합칩니다.
+2. **video_converter 전환** — 1번에서 확정한 파일로 시작합니다(`check_structure.py --copy-from jamak_converter`). 계획은 video_converter의 `PLAN.md`.
 3. **audio_converter 전환** — video_converter의 FFmpeg 실행기와 대기열을 가져다 씁니다. 계획은 audio_converter의 `PLAN.md`.
-4. **점검 스크립트** — `scripts/check_structure.py`: 옆 폴더의 세 저장소와 (가) 파일을 비교해 달라진 곳을 알려 줍니다. 네 저장소에 같은 스크립트를 둡니다.
+4. **점검 스크립트** — `scripts/check_structure.py`: 끝남. 있어야 할 파일, 앱 고유 값끼리 맞는지, 옆 폴더 저장소와 공통 파일이 같은지 봅니다. 문제가 있으면 종료 코드 1.
 
 1번을 먼저 하는 이유: 공통 파일이 정해지지 않은 채 두 앱을 더 만들면 맞춰야 할 판이 네 개로 늘어납니다.
 

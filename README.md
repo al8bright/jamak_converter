@@ -375,18 +375,19 @@ jamak_converter/
 │  │  │  ├─ subtitle.py     # SRT/ASS/VTT 쓰기
 │  │  │  ├─ cache.py        # 단계 해시와 작업 폴더 관리
 │  │  │  └─ pipeline.py
-│  │  ├─ api/               # server.py (FastAPI, WebSocket), jobs.py (작업 큐), checks.py (시스템 점검·사용량)
+│  │  ├─ api/               # server.py (FastAPI, WebSocket), base.py (보안·serve, 공통), jobs.py (작업 큐), checks.py (시스템 점검·사용량)
 │  │  ├─ hw.py              # 플랫폼·GPU 확인 (NVIDIA VRAM, Apple 통합 메모리)
 │  │  ├─ models.py          # 받을 수 있는 항목 목록 (크기, VRAM, 필요한 실행 환경, Windows·Mac별)
 │  │  ├─ installer.py       # 받기·지우기 (FFmpeg, CUDA DLL, PyTorch 환경, llama-server, 모델)
 │  │  ├─ runtime/           # qwen_asr_worker.py, qwen-requirements.lock (PyTorch 환경에서 실행)
+│  │  ├─ app_info.py        # 앱 고유 값(이름·포트). 공통 파일이 읽는다
 │  │  └─ cli.py
 │  ├─ packaging/          # PyInstaller spec, 진입점
 │  └─ tests/
 ├─ app/                     # React + Vite + TS
 │  ├─ src/                 # App.tsx(셸·사이드바·모니터), Home, Options, Progress, Review, Settings, System, Setup,
-│  │                        # api.ts, job.ts, ui.tsx, theme.ts(팔레트 4종), index.css
-│  └─ src-tauri/            # Tauri 2: src/lib.rs가 백엔드 실행·토큰·종료를 담당
+│  │                        # backend.ts(연결, 공통), appInfo.ts, api.ts, job.ts, ui.tsx, theme.ts(팔레트 4종), index.css
+│  └─ src-tauri/            # Tauri 2: src/lib.rs(공통)가 백엔드 실행·토큰·종료를 담당, src/app_info.rs가 앱 고유 값
 ├─ docs/
 │  ├─ brand/                # 로고·파비콘 원본
 │  ├─ mockups/              # 화면 구성안 (디자인 캔버스에서 내보낸 HTML·PNG)
@@ -396,8 +397,13 @@ jamak_converter/
 ├─ scripts/
 │  ├─ setup_llama.ps1       # (개발용) llama-server 내려받기·검증·설치
 │  ├─ build_app.ps1         # 설치 파일 빌드 (PyInstaller + Tauri NSIS)
-│  └─ build_app.sh          # Mac 앱 빌드 (PyInstaller + Tauri .app/.dmg)
-├─ .github/workflows/test.yml  # CI: Windows·macOS(arm64) 백엔드 테스트, UI 타입 검사
+│  ├─ build_app.sh          # Mac 앱 빌드 (PyInstaller + Tauri .app/.dmg)
+│  ├─ collect_licenses.py   # 설치 파일에 넣을 서드파티 라이선스 모으기 (공통)
+│  └─ check_structure.py    # 네 앱의 공통 파일이 같은지 확인 (공통, docs/STRUCTURE.md)
+├─ .github/workflows/
+│  ├─ ci.yml                # CI(공통): Windows 백엔드 테스트·ruff, 화면 lint·빌드, cargo check
+│  └─ extra.yml             # jamak만: macOS(arm64) 백엔드 테스트·mlx, doctor --bundled
+├─ THIRD_PARTY_NOTICES.md   # 함께 배포하는 구성 요소의 라이선스
 ├─ README.md
 ├─ PLAN.md
 └─ DESIGN.md                # 브랜드·UI 가이드

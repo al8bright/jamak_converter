@@ -270,13 +270,6 @@ def cmd_profiles(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
-    from jamak.api.server import serve
-
-    serve(host=args.host, port=args.port, parent_pid=args.parent_pid)
-    return 0
-
-
 def main(argv: list[str] | None = None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -342,11 +335,9 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--bundled", action="store_true", help="check only the speech-recognition engine (build check)")
     d.set_defaults(fn=cmd_doctor)
 
-    s = sub.add_parser("serve", help="run the local API server")
-    s.add_argument("--host", default="127.0.0.1")
-    s.add_argument("--port", type=int, default=8765)
-    s.add_argument("--parent-pid", type=int, help="exit when this process exits (Tauri)")
-    s.set_defaults(fn=cmd_serve)
+    from jamak.api.base import add_serve_command
+
+    add_serve_command(sub)
 
     args = ap.parse_args(argv)
     sys.exit(args.fn(args))

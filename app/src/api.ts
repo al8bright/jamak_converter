@@ -1,83 +1,12 @@
-// Backend client. Inside Tauri the shell starts the backend and tells us its URL + token;
-// in a plain browser (pnpm dev) we talk to `jamak serve` on VITE_JAMAK_URL or 127.0.0.1:8765.
+// Backend client: the connection itself is the shared `backend.ts`; this file adds the job events
+// and the response types (they mirror the backend).
 
-export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+import { socket } from "./backend";
 
-let base = "";
-let token = "";
-
-export async function connect(): Promise<void> {
-  if (inTauri) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const info = await invoke<{ url: string; token: string }>("backend_info");
-    base = info.url;
-    token = info.token;
-  } else {
-    base = import.meta.env.VITE_JAMAK_URL ?? "http://127.0.0.1:8765";
-  }
-  for (let i = 0; i < 150; i++) {
-    try {
-      const r = await fetch(`${base}/health`);
-      if (r.ok) return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((res) => setTimeout(res, 200));
-  }
-  throw new Error(`백엔드(${base})에 연결하지 못했습니다.`);
-}
-
-export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`${base}${path}`, {
-    method,
-    headers: { "content-type": "application/json", ...(token ? { "x-jamak-token": token } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!r.ok) {
-    let detail = r.statusText;
-    try {
-      const j = await r.json();
-      detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
-    } catch {
-      /* keep statusText */
-    }
-    throw new ApiError(r.status, detail);
-  }
-  return r.json() as Promise<T>;
-}
-
-export const api = {
-  get: <T,>(p: string) => call<T>("GET", p),
-  post: <T,>(p: string, b?: unknown) => call<T>("POST", p, b ?? {}),
-  patch: <T,>(p: string, b: unknown) => call<T>("PATCH", p, b),
-  put: <T,>(p: string, b: unknown) => call<T>("PUT", p, b),
-  del: <T,>(p: string) => call<T>("DELETE", p),
-};
+export { ApiError, api, connect, inTauri } from "./backend";
 
 export function events(key: string, onEvent: (e: JobEvent) => void): () => void {
-  let closed = false;
-  let ws: WebSocket | null = null;
-  const open = () => {
-    const url = `${base.replace(/^http/, "ws")}/jobs/${key}/events${token ? `?token=${token}` : ""}`;
-    ws = new WebSocket(url);
-    ws.onmessage = (m) => onEvent(JSON.parse(m.data));
-    ws.onclose = () => {
-      if (!closed) setTimeout(open, 1000);
-    };
-  };
-  open();
-  return () => {
-    closed = true;
-    ws?.close();
-  };
+  return socket(`/jobs/${key}/events`, (e) => onEvent(e as JobEvent));
 }
 
 // ------------------------------------------------------------------ types (mirror the backend)

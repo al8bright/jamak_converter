@@ -1,8 +1,6 @@
 """Local HTTP/WebSocket API used by the web UI (and Tauri).
 
-Security model: binds to 127.0.0.1 only; the Host header must be 127.0.0.1/localhost
-(blocks DNS-rebinding); when JAMAK_TOKEN is set (Tauri passes a random one), every request
-must carry it in `X-Jamak-Token` (or `?token=` for WebSockets).
+Security (loopback only, Host check, the per-run token) is the shared part in `api/base.py`.
 """
 
 from __future__ import annotations
@@ -18,12 +16,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from jamak import __version__
+from jamak.api import base
 from jamak.api.jobs import JobManager, list_job_dirs, load_options, purge_interrupted, purge_job
 from jamak.config import GlossaryEntry, OutputOptions, PipelineOptions, default_llm_path, paths
 from jamak.core.cache import Job, write_json_atomic
@@ -33,13 +30,6 @@ from jamak.core.store import Profile, ProfileInput, StoreError, store
 from jamak.core.translate.base import EngineError
 from jamak.core.types import Line, Lines
 from jamak.installer import SetupManager
-
-ALLOWED_ORIGINS = [
-    "http://localhost:5173", "http://127.0.0.1:5173",  # Vite dev server
-    "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost",  # Tauri webview
-]
-ALLOWED_HOSTS = {"127.0.0.1", "localhost", "testserver"}
-
 
 # ---------------------------------------------------------------------- request bodies
 
@@ -249,7 +239,7 @@ def _store_call(fn, *a, **kw):
 
 def create_app(manager: JobManager | None = None, token: str | None = None,
                setup_manager: SetupManager | None = None) -> FastAPI:
-    token = token if token is not None else os.environ.get("JAMAK_TOKEN") or None
+    token = base.env_token(token)
     mgr = manager or JobManager()
     setup = setup_manager or SetupManager()
 
@@ -275,24 +265,9 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
 
     app = FastAPI(title="jamak", version=__version__, lifespan=lifespan)
     app.state.manager = mgr
-    app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["*"],
-                       allow_headers=["*"])
-
-    @app.middleware("http")
-    async def guard(request: Request, call_next):
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
-        if host not in ALLOWED_HOSTS:
-            return JSONResponse({"detail": "forbidden host"}, status_code=403)
-        if token and request.method != "OPTIONS" and request.url.path != "/health":
-            if request.headers.get("x-jamak-token") != token:
-                return JSONResponse({"detail": "bad token"}, status_code=401)
-        return await call_next(request)
+    base.secure(app, token)
 
     # -------------------------------------------------------------- system
-    @app.get("/health")
-    def health():
-        return {"status": "ok", "version": __version__}
-
     @app.get("/system")
     def system():
         return system_info()
@@ -490,8 +465,7 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
 
     @app.websocket("/jobs/{key}/events")
     async def events(ws: WebSocket, key: str):
-        if token and ws.query_params.get("token") != token:
-            await ws.close(code=4401)
+        if not await base.ws_allowed(ws, token):
             return
         await ws.accept()
         q = mgr.subscribe(key)
@@ -822,19 +796,3 @@ def create_app(manager: JobManager | None = None, token: str | None = None,
         return st.public()
 
     return app
-
-
-def serve(host: str = "127.0.0.1", port: int = 8765, parent_pid: int | None = None) -> None:
-    import uvicorn
-
-    from jamak.core.proc import exit_when_parent_dies, free_port
-
-    if host not in ("127.0.0.1", "localhost"):
-        raise SystemExit("refusing to bind to a non-loopback address")
-    if parent_pid:
-        exit_when_parent_dies(parent_pid)
-    if port == 0:
-        port = free_port()
-    print(f"JAMAK_LISTENING http://{host}:{port}", flush=True)
-    # 2 s: on SIGTERM, do not wait for an open WebSocket forever; the app kills us 3 s after asking
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning", timeout_graceful_shutdown=2)

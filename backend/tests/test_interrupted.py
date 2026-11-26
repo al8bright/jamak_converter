@@ -217,7 +217,7 @@ def test_sigterm_stops_the_children(tmp_path):
         "proc.bind_to_lifetime(child)\n"
         "print('CHILD', child.pid, flush=True)\n"
         "threading.Thread(target=time.sleep, args=(120,)).start()\n"
-        "from jamak.api.server import serve\n"
+        "from jamak.api.base import serve\n"
         "serve(port=0)\n"
     )
     env = {**os.environ, "JAMAK_HOME": str(tmp_path / "home"), "JAMAK_TOKEN": "t", "PYTHONUNBUFFERED": "1"}
