@@ -29,8 +29,19 @@ done
 find dist/jamak-backend/_internal -name "*.metallib" | grep -q . || { echo "mlx.metallib is missing from the bundle" >&2; exit 1; }
 ./dist/jamak-backend/jamak-backend doctor --bundled || { echo "mlx-whisper does not load in the bundle" >&2; exit 1; }
 
+# Licenses of everything the app ships (THIRD_PARTY_NOTICES.md explains them)
+lic="dist/jamak-backend/licenses"
+mkdir -p "$lic"
+cp "$root/LICENSE" "$lic/LICENSE.txt"
+cp "$root/THIRD_PARTY_NOTICES.md" "$lic/"
+uv export --no-dev --no-hashes --format requirements-txt |
+  uv run python "$root/scripts/collect_licenses.py" python "$lic/python-packages.txt"
+uv run python "$root/scripts/collect_licenses.py" cargo "$root/app/src-tauri" "$lic/rust-crates.txt"
+
 cd "$root/app"
 pnpm install --frozen-lockfile
+# needs node_modules, so it runs here rather than with the other licenses
+uv run --project "$root/backend" python "$root/scripts/collect_licenses.py" npm . "$root/backend/$lic/js-packages.txt"
 pnpm tauri build
 
 ls -lh "$root"/app/src-tauri/target/release/bundle/dmg/*.dmg

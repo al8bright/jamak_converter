@@ -38,8 +38,10 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 │  │  ├─ backend.ts           # 백엔드 연결(connect·api·socket). 공통
 │  │  ├─ api.ts               # 이벤트와 응답 타입(앱 고유)
 │  │  ├─ ctx.ts               # 앱 전체 상태(Context)
-│  │  ├─ ui.tsx               # 공통 부품(Icon, Modal, Bar …)
-│  │  ├─ index.css            # 디자인 토큰(:root)과 클래스
+│  │  ├─ common.tsx           # 공통 부품(Icon, Page, Screen, Modal, Bar …). 공통
+│  │  ├─ base.css             # 디자인 토큰(:root)과 공통 클래스. 공통
+│  │  ├─ ui.tsx               # 앱 부품(로고, 아이콘 모음 …). common.tsx를 다시 내보냄
+│  │  ├─ index.css            # 앱 클래스. 맨 앞에서 base.css를 불러옴
 │  │  └─ <Screen>.tsx         # 화면 하나에 파일 하나
 │  ├─ src-tauri/              # Tauri 2 셸
 │  │  ├─ src/lib.rs  main.rs  # 백엔드 실행·토큰·종료. 공통
@@ -83,6 +85,8 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 | 파일 | 내용 |
 |---|---|
 | `app/src-tauri/src/lib.rs`, `main.rs`, `build.rs` | 백엔드 찾기(환경 변수 → 묶음 → `uv run`), 임의 토큰, `--port 0 --parent-pid`, `<ENV>_LISTENING` 읽기, Mac은 SIGTERM 후 3초 기다려 종료. Cargo의 `[lib] name`은 네 앱 모두 `app_lib` |
+| `app/src/common.tsx` | `Icon`(굵기는 `--icon-stroke`), `tracked`, 화면 뼈대 `Page`(통째로 스크롤)·`Screen`(목록만 스크롤 + 하단 동작 바), `Chip`, `Check`, `Bar`, `Empty`, `Note`, `Ellipsis`, `Modal`, `useToast` |
+| `app/src/base.css` | `:root` 토큰(서울 나이트 팔레트·서체·크기), 틀·사이드바, 머리글·패널, 카드, 버튼(`primary`·`cyan`·`danger`·`sm`), 칩, 배지, 진행 바, 알림 줄, 빈 상태, 토스트, 모달, 시작 화면 |
 | `app/src/backend.ts` | `inTauri`, `connect`, `ApiError`, `api.get/post/put/patch/del`, `socket(경로, 받기, 연결 상태)`. 브라우저 개발 때 주소는 `VITE_BACKEND_URL` |
 | `app/.oxlintrc.json`, `tsconfig*.json`, `vite.config.ts`, `.gitignore`, `src-tauri/.gitignore` | `woff2Only` 플러그인, 고정 Vite 포트, `src-tauri` 감시 제외 |
 | `backend/src/<pkg>/api/base.py` | 허용 Host·Origin, 토큰 검사(`X-<Name>-Token`, WebSocket `?token=`), `/health`, `serve` 명령과 `serve()` |
@@ -95,8 +99,10 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 목록은 `scripts/check_structure.py`의 `SHARED`가 기준입니다. 공통 파일을 고치면 그 스크립트의 `--copy-from`으로
 다른 저장소에 옮기고, 각 저장소에서 스크립트를 돌려 "모두 같음"을 확인합니다.
 
-`ui.tsx`의 기본 부품(`Icon`, `Modal`, `Bar`, `Chip`, `Check`, `Empty`, `Ellipsis`)과 `index.css`의 토큰·기본 규칙도
-공통으로 만들 예정입니다(6장 1-2). 지금은 (나)입니다.
+화면 쪽은 `ui.tsx`가 `export * from "./common"`으로 공통 부품을 다시 내보내므로 화면 파일은 `./ui`에서만 가져옵니다.
+`index.css`는 첫 줄에서 `base.css`를 불러오고, 앱에서 값을 바꿀 때는 같은 선택자를 뒤에 다시 씁니다
+(예: youtube의 `--icon-stroke: 1.8`, jamak의 작은 버튼 좌우 여백).
+`.field`·`.check`·`.row`·`.cols`는 두 앱에서 뜻이 달라 공통에 넣지 않았습니다. 새 앱은 youtube_down의 뜻을 따릅니다.
 
 ### (나) 모양은 같고 내용은 앱마다 다른 파일
 
@@ -146,7 +152,7 @@ jamak_converter, youtube_down, video_converter, audio_converter 네 저장소를
 
 ### 4.4 디자인
 
-- jamak의 네온 디자인(서울 나이트 팔레트)을 같이 씁니다. 토큰은 `index.css`의 `:root`에만 정의합니다.
+- jamak의 네온 디자인(서울 나이트 팔레트)을 같이 씁니다. 토큰은 `base.css`의 `:root`에 정의하고, 앱에서 바꿀 토큰만 `index.css`의 `:root`에 다시 씁니다. jamak은 팔레트 4종을 `theme.ts`가 `<html>`에 직접 넣습니다.
 - 컴포넌트 코드에는 색·서체·간격 값을 쓰지 않습니다.
 - 브라우저 기본 대화 상자(`alert`, `confirm`)와 운영체제 확인 창은 쓰지 않고 `Modal`을 씁니다. 파일·폴더 선택만 운영체제 창을 씁니다.
 
@@ -169,11 +175,12 @@ jamak과 youtube_down의 판을 합치며 두 쪽의 좋은 점을 골랐습니�
 | `backend.ts` | `patch`(jamak), 한국어 주석·오류 문구(youtube). WebSocket 다시 붙기는 `socket()` 하나로 |
 | `vite.config.ts`, `package.json` | `woff2Only`·고정 포트·`tauri` 스크립트·`license`(youtube) |
 | CI | Windows 공통 검사 + `cargo check`·lint(youtube), jamak의 Mac 검사는 `extra.yml`로 |
-| `collect_licenses.py` | 앱 이름을 `pyproject.toml`에서 읽게 바꿔 jamak에도 넣음. jamak에 `THIRD_PARTY_NOTICES.md` 추가 |
+| `collect_licenses.py` | 앱 이름을 `pyproject.toml`에서, Rust 대상을 빌드하는 PC에서 읽게 바꿔 jamak에도 넣음(Windows·Mac 빌드 모두). jamak에 `THIRD_PARTY_NOTICES.md` 추가 |
 | `.gitattributes` | jamak 것을 youtube에 넣음 |
+| `common.tsx`·`base.css` | youtube의 부품·규칙이 기준. jamak에서 `Page`, `Note`, `tracked`, `useToast`를 더함. `Screen`의 머리글은 `Page`와 같은 `eyebrow` 방식으로. 진행 바는 기본 주 네온(jamak 방식), `.s`로 보조 네온. jamak 로고의 `.bar`는 `.line`으로 이름을 바꿔 진행 바와 겹치지 않게 함 |
 
-남은 차이: `ui.tsx`(부품 구성), `index.css`(토큰 이름·클래스, jamak의 `.bar`는 로고 아래 줄이고 youtube의 `.bar`는 진행 바),
-`build_app.ps1`(youtube는 FFmpeg·Deno를 넣음. 앱마다 다른 것이 맞음).
+두 앱의 모든 화면(jamak 10장, youtube 5장)을 바꾸기 전후로 찍어 픽셀 단위로 비교했습니다. 바뀐 것은 jamak에서 꺼진 주 버튼의 빛 번짐이 없어진 것 하나입니다(youtube 규칙을 따름).
+앱마다 다르게 두는 것: `build_app.ps1`(youtube는 FFmpeg·Deno를 넣음), `seg`·목록·표·단계 표시 같은 화면 고유 규칙.
 
 ---
 
@@ -181,7 +188,7 @@ jamak과 youtube_down의 판을 합치며 두 쪽의 좋은 점을 골랐습니�
 
 1. **공통 파일 확정**
    1. 백엔드·Tauri 셸·연결 코드·설정·CI·스크립트 — 끝남(2026-11-26). 두 앱을 개발 모드로 띄워 백엔드 연결과 종료를 확인했습니다.
-   2. `ui.tsx` 기본 부품과 `index.css` 토큰 — 두 앱의 모든 화면을 바꾸기 전후로 찍어 비교하며 합칩니다.
+   2. 화면 부품(`common.tsx`)과 토큰·기본 규칙(`base.css`) — 끝남(2026-11-26). 두 앱의 모든 화면을 전후로 찍어 비교했습니다.
 2. **video_converter 전환** — 1번에서 확정한 파일로 시작합니다(`check_structure.py --copy-from jamak_converter`). 계획은 video_converter의 `PLAN.md`.
 3. **audio_converter 전환** — video_converter의 FFmpeg 실행기와 대기열을 가져다 씁니다. 계획은 audio_converter의 `PLAN.md`.
 4. **점검 스크립트** — `scripts/check_structure.py`: 끝남. 있어야 할 파일, 앱 고유 값끼리 맞는지, 옆 폴더 저장소와 공통 파일이 같은지 봅니다. 문제가 있으면 종료 코드 1.

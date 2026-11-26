@@ -1,4 +1,7 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+// This app's own parts. The shared parts (Icon, Page, Modal, Note, useToast …) live in common.tsx
+// (same file in all four apps) and are re-exported from here.
+
+export * from "./common";
 
 // ------------------------------------------------------------------ logo: corner brackets, 字 -> 자
 
@@ -13,7 +16,7 @@ export function Logo({ big }: { big?: boolean }) {
       <span className="g ko">자</span>
       <span className="g gh">자</span>
       <span className="g gh2" lang="ja">字</span>
-      <span className="bar" />
+      <span className="line" />
     </span>
   );
 }
@@ -39,43 +42,7 @@ export const ICONS = {
   download: "M12 3v12M7 10l5 5 5-5M4 19h16",
 };
 
-export function Icon({ d, size = 16, stroke, width = 2, className }: {
-  d: string; size?: number; stroke?: string; width?: number; className?: string;
-}) {
-  return (
-    <svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke ?? "currentColor"}
-      strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d={d} />
-    </svg>
-  );
-}
-
-// ------------------------------------------------------------------ page frame: header + glowing body panel
-
-/** Letter-spacing only on Latin capitals (DESIGN.md 4.2): "REVIEW · 21:37 완료" -> tracked "REVIEW" + plain rest. */
-export function tracked(text: string): ReactNode {
-  const parts = text.split(/([A-Z][A-Z0-9]*(?: [A-Z][A-Z0-9]*)*)/);
-  return parts.map((p, i) => (i % 2 ? <span className="tracked" key={i}>{p}</span> : p));
-}
-
-export function Page({ eyebrow, title, actions, children, wide, label = "본문" }: {
-  eyebrow: ReactNode; title: ReactNode; actions?: ReactNode; children: ReactNode; wide?: boolean; label?: string;
-}) {
-  return (
-    <>
-      <header className="head">
-        <div className="head-title">
-          <span className="eyebrow">{typeof eyebrow === "string" ? tracked(eyebrow) : eyebrow}</span>
-          <h1>{title}</h1>
-        </div>
-        {actions && <div className="head-actions">{actions}</div>}
-      </header>
-      <div className="panel" role="region" aria-label={label} tabIndex={0}>
-        <div className={`inner${wide ? " wide" : ""}`}>{children}</div>
-      </div>
-    </>
-  );
-}
+// ------------------------------------------------------------------ settings
 
 type SettingsView = "engine" | "glossary" | "models" | "system";
 
@@ -92,50 +59,4 @@ export function SettingsTabs({ current, go }: { current: SettingsView; go: (v: S
 
 export function KindBadge({ cloud, text }: { cloud: boolean; text: string }) {
   return <span className={`badge${cloud ? " cloud" : ""}`}>{text}</span>;
-}
-
-export function Note({ tone, children }: { tone?: "warn" | "err"; children: ReactNode }) {
-  return (
-    <div role="note" className={`note${tone ? ` ${tone}` : ""}`}>
-      <Icon d={tone ? ICONS.alert : ICONS.info} size={15} />
-      <span className="grow">{children}</span>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ modal (in-app; never a browser dialog)
-
-export function Modal({ title, children, actions, onClose }: {
-  title: string; children: ReactNode; actions: ReactNode; onClose: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>("[data-autofocus], button.primary:not(:disabled), button:not(:disabled)")?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="scrim" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref} onClick={(e) => e.stopPropagation()}>
-        <h2>{title}</h2>
-        {children}
-        <div className="modal-actions">{actions}</div>
-      </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ toast
-
-export function useToast(): [ReactNode, (text: string, bad?: boolean) => void] {
-  const [t, setT] = useState<{ text: string; bad: boolean } | null>(null);
-  const timer = useRef<number | undefined>(undefined);
-  const show = (text: string, bad = false) => {
-    setT({ text, bad });
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setT(null), 3000);
-  };
-  const node = t ? <div className={`toast${t.bad ? " err" : ""}`} role="status">{t.text}</div> : null;
-  return [node, show];
 }

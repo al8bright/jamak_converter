@@ -386,7 +386,7 @@ jamak_converter/
 │  └─ tests/
 ├─ app/                     # React + Vite + TS
 │  ├─ src/                 # App.tsx(셸·사이드바·모니터), Home, Options, Progress, Review, Settings, System, Setup,
-│  │                        # backend.ts(연결, 공통), appInfo.ts, api.ts, job.ts, ui.tsx, theme.ts(팔레트 4종), index.css
+│  │                        # backend.ts(연결, 공통), appInfo.ts, api.ts, job.ts, common.tsx·base.css(부품·토큰, 공통), ui.tsx, theme.ts(팔레트 4종), index.css
 │  └─ src-tauri/            # Tauri 2: src/lib.rs(공통)가 백엔드 실행·토큰·종료를 담당, src/app_info.rs가 앱 고유 값
 ├─ docs/
 │  ├─ brand/                # 로고·파비콘 원본
